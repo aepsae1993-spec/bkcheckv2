@@ -1,64 +1,1173 @@
 <!DOCTYPE html>
-<html lang="th">
+<html lang="th" class="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ระบบเช็คชื่อนักเรียน</title>
-    
-    <!-- ปรับแต่ง CSS ให้ Iframe แสดงผลเต็มจอ 100% ไม่มีขอบ -->
+    <!-- โหลด Tailwind CSS + Config ให้รองรับ Dark Mode -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Sarabun', 'sans-serif'] }
+                }
+            }
+        }
+    </script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
-        html, body {
-            margin: 0;
-            padding: 0;
-            width: 100%;
-            height: 100%;
-            overflow: hidden; /* ป้องกันแถบ Scrollbar ซ้อนกัน */
-            background-color: #f3f4f6; /* สีพื้นหลังกลืนกับระบบ */
-        }
+        @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap');
         
-        iframe {
-            width: 100%;
-            height: 100%;
-            border: none;
-            display: block;
-        }
+        /* ป้องกันหน้าจอกระพริบและโชว์โค้ดปีกกา {{ }} ตอนที่ Vue กำลังโหลด */
+        [v-cloak] { display: none !important; }
         
-        /* ใส่ Loading Spinner เล็กๆ ระหว่างรอ Google โหลด */
-        .loading-container {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            z-index: -1; /* ให้อยู่หลัง iframe พอ iframe โหลดเสร็จจะบังอันนี้ไปเอง */
-            font-family: 'Sarabun', sans-serif;
-            color: #4b5563;
-        }
-        .spinner {
-            border: 4px solid #e5e7eb;
-            border-top: 4px solid #3b82f6;
-            border-radius: 50%;
-            width: 40px;
-            height: 40px;
-            animation: spin 1s linear infinite;
-            margin-bottom: 10px;
-        }
+        /* Custom Loader */
+        .loader { border: 3px solid rgba(255,255,255,0.3); border-top: 3px solid currentColor; border-radius: 50%; width: 20px; height: 20px; animation: spin 1s linear infinite; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        /* Custom scrollbar สำหรับมือถือ */
+        ::-webkit-scrollbar { height: 6px; width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        .dark ::-webkit-scrollbar-thumb { background: #475569; }
+
+        /* สำหรับการตั้งค่า Print ให้เห็นสีพื้นหลังชัดเจน */
+        @media print {
+            * {
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+            }
+            body { background-color: white !important; }
+        }
     </style>
-    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600&display=swap" rel="stylesheet">
 </head>
-<body>
-    
-    <!-- อนิเมชั่นโหลด รอเว็บ Google -->
-    <div class="loading-container">
-        <div class="spinner"></div>
-        <p>กำลังเชื่อมต่อระบบฐานข้อมูล...</p>
+<body class="bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100 transition-colors duration-300">
+    <div id="app" class="min-h-screen pb-10 relative" v-cloak>
+        <!-- Navbar -->
+        <nav class="bg-blue-600 dark:bg-blue-800 text-white shadow-md transition-colors duration-300 print:hidden">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="flex flex-col sm:flex-row justify-between h-auto sm:h-16 items-center py-3 sm:py-0 gap-3">
+                    <div class="flex items-center gap-3">
+                        <i class="fas fa-school text-2xl"></i>
+                        <span class="font-bold text-xl tracking-wide">ระบบเช็คชื่อนักเรียน</span>
+                    </div>
+                    <div class="flex flex-wrap items-center justify-center gap-4 text-sm w-full sm:w-auto">
+                        <div class="flex items-center gap-2">
+                            <span>ปีการศึกษา</span>
+                            <input type="text" v-model="currentYear" class="w-16 bg-blue-700 dark:bg-blue-900 border-none rounded px-1.5 py-0.5 text-center text-white focus:outline-none focus:ring-2 focus:ring-white">
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span>เทอม</span>
+                            <select v-model="currentTerm" class="bg-blue-700 dark:bg-blue-900 border-none rounded px-2 py-0.5 text-white focus:outline-none focus:ring-2 focus:ring-white">
+                                <option value="1">1</option>
+                                <option value="2">2</option>
+                            </select>
+                        </div>
+                        <!-- ปุ่มสลับธีม มืด/สว่าง -->
+                        <button @click="toggleTheme" class="ml-2 bg-blue-700 hover:bg-blue-800 dark:bg-blue-900 dark:hover:bg-blue-950 p-2 rounded-full w-9 h-9 flex items-center justify-center transition-colors focus:outline-none">
+                            <i :class="isDarkMode ? 'fas fa-sun text-yellow-300' : 'fas fa-moon'"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </nav>
+
+        <!-- Tabs -->
+        <div class="bg-white dark:bg-gray-800 shadow-sm mb-6 overflow-x-auto transition-colors duration-300 print:hidden">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 min-w-max">
+                <div class="flex space-x-8">
+                    <button @click="currentTab = 'check'" :class="currentTab === 'check' ? 'border-b-2 border-blue-500 text-blue-600 dark:text-blue-400 font-bold' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'" class="py-4 px-1 text-md focus:outline-none flex items-center gap-2 transition-colors whitespace-nowrap">
+                        <i class="fas fa-user-check"></i> หน้าเช็คชื่อ
+                    </button>
+                    <button @click="currentTab = 'summary'; fetchSummary();" :class="currentTab === 'summary' ? 'border-b-2 border-blue-500 text-blue-600 dark:text-blue-400 font-bold' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'" class="py-4 px-1 text-md focus:outline-none flex items-center gap-2 transition-colors whitespace-nowrap">
+                        <i class="fas fa-chart-bar"></i> สรุปรายวัน
+                    </button>
+                    <button @click="currentTab = 'class_summary';" :class="currentTab === 'class_summary' ? 'border-b-2 border-blue-500 text-blue-600 dark:text-blue-400 font-bold' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'" class="py-4 px-1 text-md focus:outline-none flex items-center gap-2 transition-colors whitespace-nowrap">
+                        <i class="fas fa-users"></i> สรุปรายชั้น
+                    </button>
+                    <button @click="currentTab = 'manage';" :class="currentTab === 'manage' ? 'border-b-2 border-blue-500 text-blue-600 dark:text-blue-400 font-bold' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'" class="py-4 px-1 text-md focus:outline-none flex items-center gap-2 transition-colors whitespace-nowrap">
+                        <i class="fas fa-user-cog"></i> เพิ่ม/จัดการนักเรียน
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            
+            <!-- TAB 1: หน้าเช็คชื่อ -->
+            <div v-show="currentTab === 'check'" class="bg-white dark:bg-gray-800 rounded-xl shadow-md p-4 sm:p-6 transition-colors duration-300">
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6 bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg border border-gray-100 dark:border-gray-700">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">วันที่เช็คชื่อ</label>
+                        <input type="date" v-model="selectedDate" class="w-full bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white rounded-md shadow-sm p-2 border focus:ring-blue-500 focus:border-blue-500 transition-colors">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">ระดับชั้น</label>
+                        <select v-model="selectedGrade" class="w-full bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white rounded-md shadow-sm p-2 border focus:ring-blue-500 focus:border-blue-500 transition-colors">
+                            <option v-for="grade in grades" :key="grade" :value="grade">{{ grade }}</option>
+                        </select>
+                    </div>
+                    <div class="flex items-end sm:col-span-2 lg:col-span-1 mt-2 sm:mt-0">
+                        <button @click="fetchStudents" :disabled="isLoading" class="w-full bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 disabled:bg-indigo-400 dark:disabled:bg-indigo-800 text-white font-medium py-2 px-4 rounded-md shadow transition duration-150 flex items-center justify-center">
+                            <div v-if="isLoading" class="loader mr-2 border-t-white"></div>
+                            <i v-else class="fas fa-search mr-2"></i> 
+                            {{ isLoading ? 'กำลังโหลด...' : 'ดึงรายชื่อ' }}
+                        </button>
+                    </div>
+                </div>
+
+                <div class="bg-blue-50 dark:bg-blue-900/30 border-l-4 border-blue-400 dark:border-blue-500 p-4 mb-6 rounded-r">
+                    <div class="flex">
+                        <div class="flex-shrink-0"><i class="fas fa-info-circle text-blue-400 dark:text-blue-300"></i></div>
+                        <div class="ml-3">
+                            <p class="text-sm text-blue-700 dark:text-blue-200">
+                                ระบบตั้งค่าเริ่มต้นเป็น <b>"มา"</b> ให้ทุกคนเรียบร้อยแล้ว กรุณาเปลี่ยนสถานะเฉพาะนักเรียนที่ ลา หรือ ขาด 
+                                <br><span class="text-xs text-gray-500 dark:text-blue-300/70">* เรียงตาม "เลขที่" นักเรียน</span>
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Student List Table (Responsive Wrapper) -->
+                <div class="overflow-x-auto w-full rounded-lg border border-gray-200 dark:border-gray-700">
+                    <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                        <thead class="bg-gray-50 dark:bg-gray-900/50">
+                            <tr>
+                                <th scope="col" class="px-2 sm:px-4 py-3 text-center text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider w-10 sm:w-16">เลขที่</th>
+                                <th scope="col" class="hidden sm:table-cell px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider w-24">รหัส</th>
+                                <th scope="col" class="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">ชื่อ - นามสกุล</th>
+                                <th scope="col" class="px-1 sm:px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider w-[130px] sm:w-[16rem]">สถานะ</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                            <tr v-for="(student) in studentsList" :key="student.student_id" class="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                                <td class="px-2 sm:px-4 py-2 sm:py-4 whitespace-nowrap text-sm sm:text-md font-bold text-gray-800 dark:text-gray-200 text-center bg-gray-50 dark:bg-gray-900/30">{{ student.student_number != null ? student.student_number : '-' }}</td>
+                                <td class="hidden sm:table-cell px-2 sm:px-4 py-2 sm:py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400 font-mono">{{ student.student_id }}</td>
+                                <td class="px-2 sm:px-4 py-2 sm:py-4 whitespace-nowrap">
+                                    <div class="flex items-center">
+                                        <div class="text-xs sm:text-sm font-medium text-gray-900 dark:text-white truncate max-w-[120px] sm:max-w-none">
+                                            <span v-if="student.gender === 'ชาย'" class="text-blue-500 dark:text-blue-400 mr-1"><i class="fas fa-male"></i></span>
+                                            <span v-else class="text-pink-500 dark:text-pink-400 mr-1"><i class="fas fa-female"></i></span>
+                                            {{ student.first_name }} {{ student.last_name }}
+                                        </div>
+                                    </div>
+                                </td>
+                                <td class="px-1 sm:px-4 py-2 sm:py-3 whitespace-nowrap text-center">
+                                    <div class="flex rounded-md shadow-sm w-full min-w-[110px]" role="group">
+                                        <label class="cursor-pointer flex-1">
+                                            <input type="radio" :name="'status-'+student.student_id" value="มา" v-model="student.status" class="peer sr-only">
+                                            <div class="w-full text-center px-1 sm:px-4 py-1.5 sm:py-2 text-[11px] sm:text-sm font-medium text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-600 rounded-l-lg hover:bg-gray-100 dark:hover:bg-gray-600 peer-checked:bg-green-500 peer-checked:text-white peer-checked:border-green-500 dark:peer-checked:border-green-500 transition-colors">มา</div>
+                                        </label>
+                                        <label class="cursor-pointer flex-1">
+                                            <input type="radio" :name="'status-'+student.student_id" value="ลา" v-model="student.status" class="peer sr-only">
+                                            <div class="w-full text-center px-1 sm:px-4 py-1.5 sm:py-2 text-[11px] sm:text-sm font-medium text-gray-700 dark:text-gray-300 border-t border-b border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600 peer-checked:bg-yellow-500 peer-checked:text-white peer-checked:border-yellow-500 dark:peer-checked:border-yellow-500 transition-colors">ลา</div>
+                                        </label>
+                                        <label class="cursor-pointer flex-1">
+                                            <input type="radio" :name="'status-'+student.student_id" value="ขาด" v-model="student.status" class="peer sr-only">
+                                            <div class="w-full text-center px-1 sm:px-4 py-1.5 sm:py-2 text-[11px] sm:text-sm font-medium text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-600 rounded-r-md hover:bg-gray-100 dark:hover:bg-gray-600 peer-checked:bg-red-500 peer-checked:text-white peer-checked:border-red-500 dark:peer-checked:border-red-500 transition-colors">ขาด</div>
+                                        </label>
+                                    </div>
+                                </td>
+                            </tr>
+                            <tr v-if="studentsList.length === 0">
+                                <td colspan="4" class="px-4 py-8 text-center text-gray-500 dark:text-gray-400">
+                                    กรุณากดปุ่ม "ดึงรายชื่อ" เพื่อแสดงข้อมูล
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="mt-6 flex justify-end">
+                    <button @click="saveAttendance" :disabled="isSaving || studentsList.length === 0" class="w-full sm:w-auto bg-green-600 hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-600 disabled:bg-green-400 dark:disabled:bg-green-800 text-white font-bold py-3 px-8 rounded-lg shadow-lg flex items-center justify-center transition duration-200 transform sm:hover:scale-105 disabled:sm:hover:scale-100">
+                        <div v-if="isSaving" class="loader mr-2 border-t-white border-white/30"></div>
+                        <i v-else class="fas fa-save mr-2"></i> 
+                        {{ isSaving ? 'กำลังบันทึก...' : 'บันทึกข้อมูลการเข้าเรียน' }}
+                    </button>
+                </div>
+            </div>
+
+            <!-- TAB 2: สรุปรายวัน -->
+            <div v-show="currentTab === 'summary'" class="bg-transparent space-y-6">
+                
+                <!-- ส่วนหัวรายงาน (แสดงเฉพาะตอนพิมพ์) -->
+                <div class="hidden print:block text-center mb-8 pb-4 border-b-2 border-gray-800">
+                    <div class="flex justify-center items-center gap-3 mb-3">
+                        <i class="fas fa-school text-4xl text-gray-800"></i>
+                        <h2 class="text-3xl font-bold text-gray-900">รายงานสรุปการเข้าเรียนประจำวัน</h2>
+                    </div>
+                    <p class="text-xl text-gray-800 font-medium">ประจำวันที่: <span class="text-indigo-700">{{ formatDateThai(summaryDate) }}</span></p>
+                    <p class="text-md text-gray-600 mt-1">ภาคเรียนที่ {{ currentTerm }} / ปีการศึกษา {{ currentYear }}</p>
+                </div>
+
+                <!-- ข้อมูลนักเรียนทั้งหมด (โรงเรียน) -->
+                <div class="bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-100 dark:border-indigo-800/50 rounded-xl p-4 sm:p-5 flex flex-col md:flex-row justify-between items-center shadow-sm print:shadow-none print:border-gray-300">
+                    <div class="flex items-center gap-4 mb-4 md:mb-0 w-full md:w-auto">
+                        <div class="bg-indigo-500 dark:bg-indigo-600 text-white p-3 rounded-full flex shrink-0 items-center justify-center w-12 h-12 shadow-sm print:bg-gray-200 print:text-gray-800">
+                            <i class="fas fa-users text-xl"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-indigo-900 dark:text-indigo-200 font-bold text-lg print:text-gray-800">ยอดนักเรียนทั้งหมด (ปัจจุบัน)</h3>
+                            <p class="text-sm text-indigo-700 dark:text-indigo-400 print:text-gray-600">จำนวนที่กำลังศึกษาอยู่ (หักลบย้ายออก)</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-4 sm:gap-6 bg-white dark:bg-gray-800 px-4 sm:px-6 py-3 rounded-lg shadow-sm border border-indigo-50 dark:border-indigo-800/50 w-full md:w-auto justify-around print:shadow-none print:border-gray-300 print:bg-white">
+                        <div class="text-center">
+                            <div class="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1 print:text-gray-600">รวมทั้งสิ้น</div>
+                            <div class="text-2xl font-black text-indigo-700 dark:text-indigo-400 print:text-gray-800">{{ schoolStats.total }} <span class="text-sm font-normal text-gray-500 dark:text-gray-400">คน</span></div>
+                        </div>
+                        <div class="w-px h-10 bg-gray-200 dark:bg-gray-700 print:bg-gray-300"></div>
+                        <div class="flex gap-4 sm:gap-6">
+                            <div class="text-center">
+                                <div class="text-xs font-bold text-blue-500 dark:text-blue-400 mb-1 print:text-gray-600"><i class="fas fa-male mr-1"></i>ชาย</div>
+                                <div class="text-lg font-bold text-gray-700 dark:text-gray-300 print:text-gray-800">{{ schoolStats.boys }}</div>
+                            </div>
+                            <div class="text-center">
+                                <div class="text-xs font-bold text-pink-500 dark:text-pink-400 mb-1 print:text-gray-600"><i class="fas fa-female mr-1"></i>หญิง</div>
+                                <div class="text-lg font-bold text-gray-700 dark:text-gray-300 print:text-gray-800">{{ schoolStats.girls }}</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- คอนโทรลเลือกวันและปุ่มพิมพ์ (ซ่อนตอนพิมพ์) -->
+                 <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-4 flex flex-col sm:flex-row items-center justify-between gap-4 transition-colors print:hidden">
+                    <div class="flex items-center gap-4 w-full sm:w-auto">
+                        <label class="text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap">ดูสรุปประจำวันที่:</label>
+                        <input type="date" v-model="summaryDate" @change="fetchSummary" class="bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white rounded-md shadow-sm p-2 border text-sm focus:ring-blue-500 focus:border-blue-500 w-full sm:w-auto">
+                    </div>
+                    <button @click="printReport" class="w-full sm:w-auto text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 text-sm font-medium border border-blue-200 dark:border-blue-800 hover:bg-blue-50 dark:hover:bg-gray-700 px-4 py-2 sm:py-1.5 rounded-md transition-colors text-center shadow-sm">
+                        <i class="fas fa-print mr-2"></i> พิมพ์รายงานนี้
+                    </button>
+                </div>
+
+                <div v-if="isSummaryLoading" class="flex justify-center py-10 print:hidden"><div class="loader !w-10 !h-10 !border-4 text-blue-500 border-t-blue-500"></div></div>
+                <div v-else>
+                    <!-- การ์ด 4 ใบ -->
+                    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-4 sm:p-5 border-l-4 border-blue-500 relative overflow-hidden print:shadow-none print:border-gray-300 print:border-l-4">
+                            <i class="fas fa-clipboard-check absolute -right-4 -bottom-4 text-blue-50 dark:text-gray-700 opacity-50 text-7xl print:hidden"></i>
+                            <p class="text-xs sm:text-sm font-bold text-gray-600 dark:text-gray-400 mb-1 print:text-gray-600">เช็คชื่อแล้ว (วันนี้)</p>
+                            <h3 class="text-2xl sm:text-3xl font-black text-gray-800 dark:text-white relative z-10 print:text-black">{{ summary.total }} <span class="text-xs sm:text-sm font-normal text-gray-500 dark:text-gray-400">คน</span></h3>
+                            <p class="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 mt-2 relative z-10 print:text-gray-500">ชาย {{ summary.boys }} / หญิง {{ summary.girls }}</p>
+                        </div>
+                        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-4 sm:p-5 border-l-4 border-green-500 relative overflow-hidden print:shadow-none print:border-gray-300 print:border-l-4">
+                            <i class="fas fa-user-check absolute -right-4 -bottom-4 text-green-50 dark:text-green-900/20 opacity-50 text-7xl print:hidden"></i>
+                            <p class="text-xs sm:text-sm font-bold text-gray-600 dark:text-gray-400 mb-1 print:text-gray-600">มาเรียน</p>
+                            <div class="flex items-baseline gap-1 sm:gap-2 relative z-10 flex-wrap">
+                                <h3 class="text-2xl sm:text-3xl font-black text-green-600 dark:text-green-500 print:text-green-700">{{ summary.present }}</h3>
+                                <span :class="summary.percent >= 80 ? 'bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-300 print:bg-white print:border print:border-green-300' : 'bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-300 print:bg-white print:border print:border-red-300'" class="px-1 sm:px-2 py-0.5 sm:py-1 rounded text-[10px] sm:text-xs font-bold">{{ summary.percent.toFixed(2) }}%</span>
+                            </div>
+                            <p class="text-[10px] sm:text-xs font-medium text-gray-500 dark:text-gray-400 mt-2 relative z-10 print:text-gray-500">
+                                <span class="text-blue-500 dark:text-blue-400 print:text-gray-600"><i class="fas fa-male mr-0.5"></i>ช: {{ summary.presentBoys }}</span> <span class="mx-0.5 sm:mx-1">|</span> 
+                                <span class="text-pink-500 dark:text-pink-400 print:text-gray-600"><i class="fas fa-female mr-0.5"></i>ญ: {{ summary.presentGirls }}</span>
+                            </p>
+                        </div>
+                        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-4 sm:p-5 border-l-4 border-yellow-500 relative overflow-hidden print:shadow-none print:border-gray-300 print:border-l-4">
+                            <i class="fas fa-user-clock absolute -right-4 -bottom-4 text-yellow-50 dark:text-yellow-900/20 opacity-50 text-7xl print:hidden"></i>
+                            <p class="text-xs sm:text-sm font-bold text-gray-600 dark:text-gray-400 mb-1 print:text-gray-600">ลา</p>
+                            <h3 class="text-2xl sm:text-3xl font-black text-yellow-600 dark:text-yellow-500 print:text-yellow-700 relative z-10">{{ summary.leave }} <span class="text-xs sm:text-sm font-normal text-gray-500 dark:text-gray-400 print:text-gray-500">คน</span></h3>
+                        </div>
+                        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-4 sm:p-5 border-l-4 border-red-500 relative overflow-hidden print:shadow-none print:border-gray-300 print:border-l-4">
+                            <i class="fas fa-user-times absolute -right-4 -bottom-4 text-red-50 dark:text-red-900/20 opacity-50 text-7xl print:hidden"></i>
+                            <p class="text-xs sm:text-sm font-bold text-gray-600 dark:text-gray-400 mb-1 print:text-gray-600">ขาด</p>
+                            <h3 class="text-2xl sm:text-3xl font-black text-red-600 dark:text-red-500 print:text-red-700 relative z-10">{{ summary.absent }} <span class="text-xs sm:text-sm font-normal text-gray-500 dark:text-gray-400 print:text-gray-500">คน</span></h3>
+                        </div>
+                    </div>
+                    
+                    <!-- ตารางรายละเอียดรายชั้น -->
+                    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-md overflow-hidden transition-colors print:shadow-none print:border print:border-gray-300">
+                        <div class="px-4 sm:px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50 print:bg-gray-100 print:border-gray-300"><h3 class="text-lg font-bold text-gray-800 dark:text-gray-200 print:text-black">รายละเอียดแยกตามระดับชั้น</h3></div>
+                        <div class="overflow-x-auto w-full">
+                            <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700 print:divide-gray-300">
+                                <thead class="bg-white dark:bg-gray-800 print:bg-white">
+                                    <tr>
+                                        <th class="px-4 sm:px-6 py-3 text-left text-xs font-bold text-gray-600 dark:text-gray-400 uppercase whitespace-nowrap print:text-gray-800 border-b print:border-gray-300">ชั้น</th>
+                                        <th class="px-4 sm:px-6 py-3 text-center text-xs font-bold text-gray-600 dark:text-gray-400 uppercase whitespace-nowrap print:text-gray-800 border-b print:border-gray-300">เช็คชื่อทั้งหมด</th>
+                                        <th class="px-4 sm:px-6 py-3 text-center text-xs font-bold text-green-600 dark:text-green-500 uppercase whitespace-nowrap print:text-green-700 border-b print:border-gray-300">มา<br><span class="text-[10px] text-gray-500 dark:text-gray-500 font-normal">(รวม | ชาย | หญิง)</span></th>
+                                        <th class="px-4 sm:px-6 py-3 text-center text-xs font-bold text-yellow-600 dark:text-yellow-500 uppercase whitespace-nowrap print:text-yellow-700 border-b print:border-gray-300">ลา</th>
+                                        <th class="px-4 sm:px-6 py-3 text-center text-xs font-bold text-red-600 dark:text-red-500 uppercase whitespace-nowrap print:text-red-700 border-b print:border-gray-300">ขาด</th>
+                                        <th class="px-4 sm:px-6 py-3 text-center text-xs font-bold text-gray-600 dark:text-gray-400 uppercase whitespace-nowrap print:text-gray-800 border-b print:border-gray-300">% มาเรียน</th>
+                                        <th class="px-4 sm:px-6 py-3 text-left text-xs font-bold text-gray-600 dark:text-gray-400 uppercase min-w-[12rem] print:text-gray-800 border-b print:border-gray-300">ผู้ไม่มาเรียน</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-100 dark:divide-gray-700 print:divide-gray-200 print:bg-white">
+                                    <tr v-for="stat in gradeStats" :key="stat.grade" class="hover:bg-blue-50 dark:hover:bg-gray-700/50 transition-colors">
+                                        <td class="px-4 sm:px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-800 dark:text-gray-200 print:text-black">{{ stat.grade }}</td>
+                                        <td class="px-4 sm:px-6 py-4 whitespace-nowrap text-sm text-center text-gray-600 dark:text-gray-400 font-medium print:text-gray-800">{{ stat.total }}</td>
+                                        <td class="px-4 sm:px-6 py-2 whitespace-nowrap text-sm text-center">
+                                            <div class="font-bold text-green-600 dark:text-green-500 text-lg print:text-green-700">{{ stat.present }}</div>
+                                            <div v-if="stat.total > 0" class="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5 print:text-gray-600">ช:{{ stat.presentBoys }} | ญ:{{ stat.presentGirls }}</div>
+                                            <div v-else class="text-[11px] text-gray-500 dark:text-gray-500 mt-0.5 print:text-gray-600">-</div>
+                                        </td>
+                                        <td class="px-4 sm:px-6 py-4 whitespace-nowrap text-sm text-center text-yellow-600 dark:text-yellow-500 font-medium print:text-yellow-700">{{ stat.leave }}</td>
+                                        <td class="px-4 sm:px-6 py-4 whitespace-nowrap text-sm text-center text-red-600 dark:text-red-500 font-medium print:text-red-700">{{ stat.absent }}</td>
+                                        <td class="px-4 sm:px-6 py-4 whitespace-nowrap text-sm text-center">
+                                            <span :class="stat.percent >= 80 ? 'text-green-600 bg-green-50 dark:text-green-400 dark:bg-green-900/30 print:text-green-800 print:bg-transparent' : 'text-red-600 bg-red-50 dark:text-red-400 dark:bg-red-900/30 print:text-red-800 print:bg-transparent'" class="font-bold px-2 py-1 rounded">{{ stat.percent.toFixed(2) }}%</span>
+                                        </td>
+                                        <td class="px-4 sm:px-6 py-4 text-sm text-gray-600 dark:text-gray-400 print:text-gray-800">
+                                            <div v-if="stat.missingNames.length > 0" class="flex flex-wrap gap-1">
+                                                <span v-for="name in stat.missingNames" :key="name" class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-300 print:border print:border-gray-300 print:bg-white print:text-black">{{ name }}</span>
+                                            </div>
+                                            <span v-else-if="stat.total > 0" class="text-green-500 dark:text-green-400 text-xs font-medium print:text-gray-600"><i class="fas fa-check-circle mr-1 print:hidden"></i>มาครบ</span>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 3: สรุปรายชั้น -->
+            <div v-show="currentTab === 'class_summary'" class="bg-white dark:bg-gray-800 rounded-xl shadow-md p-4 sm:p-6 transition-colors">
+                 <div class="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-6">
+                    <div>
+                        <h2 class="text-xl font-bold text-gray-800 dark:text-white"><i class="fas fa-users text-blue-500 dark:text-blue-400 mr-2"></i>สรุปการเข้าเรียนรายชั้นเรียน</h2>
+                    </div>
+                    <div class="flex flex-col sm:flex-row items-start sm:items-end gap-2 sm:gap-4 bg-gray-50 dark:bg-gray-700/50 p-3 rounded-lg border border-gray-100 dark:border-gray-700">
+                        <div class="w-full sm:w-auto">
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">เลือกระดับชั้น</label>
+                            <select v-model="classSummaryGrade" @change="fetchClassSummary" class="w-full sm:w-40 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white rounded-md shadow-sm p-2 border focus:ring-blue-500 focus:border-blue-500 transition-colors">
+                                <option value="" disabled>-- เลือกชั้น --</option>
+                                <option v-for="grade in grades" :key="grade" :value="grade">{{ grade }}</option>
+                            </select>
+                        </div>
+                        <button @click="exportClassSummaryToExcel" :disabled="classSummaryData.length === 0 || isClassSummaryLoading" class="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md shadow-sm font-medium transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
+                            <i class="fas fa-file-excel"></i> ส่งออก Excel
+                        </button>
+                    </div>
+                </div>
+                <div v-if="isClassSummaryLoading" class="flex justify-center py-10"><div class="loader !w-10 !h-10 !border-4 text-blue-500 border-t-blue-500"></div></div>
+                <div v-else class="overflow-x-auto w-full rounded-lg border border-gray-200 dark:border-gray-700">
+                    <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                        <thead class="bg-gray-50 dark:bg-gray-900/50">
+                            <tr>
+                                <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase w-12 min-w-[3rem]">เลขที่</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase w-20 min-w-[5rem]">รหัส</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase min-w-[12rem]">ชื่อ - นามสกุล</th>
+                                <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase w-24 min-w-[6rem]">วันเปิดเรียน</th>
+                                <th class="px-4 py-3 text-center text-xs font-bold text-green-600 dark:text-green-500 uppercase w-16">มา</th>
+                                <th class="px-4 py-3 text-center text-xs font-bold text-yellow-600 dark:text-yellow-500 uppercase w-16">ลา</th>
+                                <th class="px-4 py-3 text-center text-xs font-bold text-red-600 dark:text-red-500 uppercase w-16">ขาด</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase w-48 min-w-[10rem]">% มาเรียน</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                            <tr v-for="(student) in classSummaryData" :key="student.student_id" :class="student.is_active === false ? 'bg-red-50 dark:bg-red-900/10 opacity-95' : 'hover:bg-gray-50 dark:hover:bg-gray-700/50'">
+                                <td class="px-4 py-4 whitespace-nowrap text-sm font-bold text-center" :class="student.is_active === false ? 'text-red-700 dark:text-red-400' : 'text-gray-800 dark:text-gray-200'">
+                                    {{ student.student_number != null ? student.student_number : '-' }}
+                                </td>
+                                <td class="px-4 py-4 whitespace-nowrap text-sm font-mono" :class="student.is_active === false ? 'text-red-500 dark:text-red-400/80' : 'text-gray-500 dark:text-gray-400'">
+                                    {{ student.student_id }}
+                                </td>
+                                <td class="px-4 py-4 whitespace-nowrap">
+                                    <div class="flex items-center">
+                                        <span v-if="student.gender === 'ชาย'" :class="student.is_active === false ? 'text-red-400' : 'text-blue-500 dark:text-blue-400'" class="mr-2"><i class="fas fa-male"></i></span>
+                                        <span v-else :class="student.is_active === false ? 'text-red-400' : 'text-pink-500 dark:text-pink-400'" class="mr-2"><i class="fas fa-female"></i></span>
+                                        <div class="text-sm font-medium" :class="student.is_active === false ? 'text-red-800 dark:text-red-300' : 'text-gray-900 dark:text-white'">
+                                            {{ student.first_name }} {{ student.last_name }}
+                                        </div>
+                                        <span v-if="student.is_active === false" class="ml-2 px-2 py-0.5 rounded text-[10px] font-bold bg-red-600 dark:bg-red-700 text-white shadow-sm">
+                                            ย้ายออก
+                                        </span>
+                                    </div>
+                                </td>
+                                <td class="px-4 py-4 whitespace-nowrap text-sm text-center text-gray-600 dark:text-gray-400">{{ student.totalDays }}</td>
+                                <td class="px-4 py-4 whitespace-nowrap text-sm text-center font-medium" :class="student.is_active === false ? 'text-green-700 dark:text-green-400 bg-red-100 dark:bg-transparent' : 'text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20'">{{ student.present }}</td>
+                                <td class="px-4 py-4 whitespace-nowrap text-sm text-center" :class="student.is_active === false ? 'text-yellow-700 dark:text-yellow-400' : 'text-yellow-600 dark:text-yellow-500'">{{ student.leave }}</td>
+                                <td class="px-4 py-4 whitespace-nowrap text-sm text-center" :class="student.is_active === false ? 'text-red-700 dark:text-red-400 font-bold' : 'text-red-600 dark:text-red-500'">{{ student.absent }}</td>
+                                <td class="px-4 py-4 whitespace-nowrap">
+                                    <div class="flex items-center gap-2">
+                                        <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5">
+                                            <div :class="student.percent >= 80 ? 'bg-green-500 dark:bg-green-400' : 'bg-red-500 dark:bg-red-500'" class="h-2.5 rounded-full" :style="{ width: student.percent + '%' }"></div>
+                                        </div>
+                                        <span :class="student.percent >= 80 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'" class="text-xs font-bold min-w-[40px] text-right">{{ student.percent.toFixed(2) }}%</span>
+                                    </div>
+                                </td>
+                            </tr>
+                            <tr v-if="classSummaryData.length === 0">
+                                <td colspan="8" class="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
+                                    {{ classSummaryGrade === '' ? 'กรุณาเลือกระดับชั้นเพื่อแสดงข้อมูล' : 'ไม่พบข้อมูล หรือยังไม่มีการบันทึกเวลาเรียน' }}
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- TAB 4: จัดการ/เพิ่มนักเรียน -->
+            <div v-show="currentTab === 'manage'" class="bg-white dark:bg-gray-800 rounded-xl shadow-md p-4 sm:p-6 transition-colors">
+                <!-- Sub Tabs for Manage -->
+                <div class="flex flex-wrap gap-2 mb-6 border-b border-gray-200 dark:border-gray-700 pb-2">
+                    <button @click="manageSubTab = 'import'" :class="manageSubTab === 'import' ? 'bg-blue-50 dark:bg-blue-900/50 text-blue-700 dark:text-blue-400 font-bold rounded-lg' : 'text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700 rounded-lg'" class="px-4 py-2 text-sm transition-colors flex items-center gap-2 whitespace-nowrap">
+                        <i class="fas fa-cloud-upload-alt"></i> นำเข้าข้อมูล (Excel)
+                    </button>
+                    <button @click="manageSubTab = 'list'" :class="manageSubTab === 'list' ? 'bg-blue-50 dark:bg-blue-900/50 text-blue-700 dark:text-blue-400 font-bold rounded-lg' : 'text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700 rounded-lg'" class="px-4 py-2 text-sm transition-colors flex items-center gap-2 whitespace-nowrap">
+                        <i class="fas fa-list"></i> ข้อมูลนักเรียนในชั้น
+                    </button>
+                </div>
+
+                <!-- 4.1 นำเข้านักเรียนใหม่ -->
+                <div v-show="manageSubTab === 'import'">
+                    <div class="mb-6">
+                        <h2 class="text-xl font-bold text-gray-800 dark:text-white mb-2">นำเข้านักเรียนใหม่</h2>
+                        <p class="text-sm text-gray-500 dark:text-gray-400">ระบบจะทำการรันเลขที่ (1, 2, 3...) ให้อัตโนมัติตามลำดับในตาราง</p>
+                    </div>
+
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8">
+                        <div class="space-y-4">
+                            <div class="bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
+                                <label class="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">1. เลือกระดับชั้นที่ต้องการนำเข้า</label>
+                                <select v-model="importGrade" class="w-full md:w-1/2 bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white rounded-md shadow-sm p-2 border focus:ring-blue-500 focus:border-blue-500">
+                                    <option v-for="grade in grades" :key="grade" :value="grade">{{ grade }}</option>
+                                </select>
+                            </div>
+
+                            <div class="bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
+                                <label class="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">2. วางข้อมูลจาก Excel (Copy & Paste)</label>
+                                <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">เรียงคอลัมน์ดังนี้: <b class="text-blue-600 dark:text-blue-400">รหัสนักเรียน(5หลัก) | ชื่อ | นามสกุล | เพศ(ชาย/หญิง)</b></p>
+                                <textarea v-model="pasteData" @input="parsePastedData" placeholder="วางข้อมูลที่นี่..." class="w-full h-32 bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white rounded-md p-3 border focus:ring-blue-500 text-sm font-mono"></textarea>
+                                
+                                <div class="my-4 flex items-center justify-center">
+                                    <div class="border-t border-gray-300 dark:border-gray-600 flex-grow"></div>
+                                    <span class="px-3 text-sm text-gray-400 dark:text-gray-500 font-medium">หรืออัปโหลดไฟล์ Excel</span>
+                                    <div class="border-t border-gray-300 dark:border-gray-600 flex-grow"></div>
+                                </div>
+                                <input type="file" ref="fileInput" @change="handleFileUpload" accept=".xlsx, .xls, .csv" class="block w-full text-sm text-gray-500 dark:text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 dark:file:bg-blue-900/50 dark:file:text-blue-300">
+                            </div>
+                        </div>
+
+                        <!-- Preview Table -->
+                        <div>
+                            <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm h-full flex flex-col">
+                                <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50 flex justify-between items-center">
+                                    <h3 class="text-sm font-bold text-gray-700 dark:text-gray-300">พรีวิวข้อมูล</h3>
+                                    <span class="bg-blue-100 dark:bg-blue-900/50 text-blue-800 dark:text-blue-300 text-xs font-semibold px-2.5 py-0.5 rounded">{{ parsedStudents.length }} รายการ</span>
+                                </div>
+                                <div class="p-0 overflow-x-auto overflow-y-auto max-h-96 flex-grow w-full">
+                                    <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700" v-if="parsedStudents.length > 0">
+                                        <thead class="bg-gray-100 dark:bg-gray-700 sticky top-0">
+                                            <tr>
+                                                <th class="px-4 py-2 text-center text-xs font-medium text-gray-500 dark:text-gray-300 whitespace-nowrap">เลขที่</th>
+                                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 whitespace-nowrap">รหัส</th>
+                                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 whitespace-nowrap">ชื่อ - สกุล</th>
+                                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 whitespace-nowrap">เพศ</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-100 dark:divide-gray-700">
+                                            <tr v-for="(student, idx) in parsedStudents" :key="idx" class="hover:bg-gray-50 dark:hover:bg-gray-700/50 text-sm">
+                                                <td class="px-4 py-2 text-center font-bold dark:text-gray-200">{{ student.student_number }}</td>
+                                                <td class="px-4 py-2 text-gray-900 dark:text-gray-400 font-mono">{{ student.student_id }}</td>
+                                                <td class="px-4 py-2 text-gray-700 dark:text-gray-300 whitespace-nowrap">{{ student.first_name }} {{ student.last_name }}</td>
+                                                <td class="px-4 py-2 text-gray-700 dark:text-gray-300 whitespace-nowrap">
+                                                    <span :class="student.gender === 'ชาย' ? 'text-blue-600 dark:text-blue-400' : 'text-pink-600 dark:text-pink-400'">{{ student.gender }}</span>
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                    <div v-else class="flex flex-col items-center justify-center h-48 text-gray-400 dark:text-gray-600 w-full">
+                                        <i class="fas fa-table text-4xl mb-3"></i><p class="text-sm">ยังไม่มีข้อมูล</p>
+                                    </div>
+                                </div>
+                                <div class="p-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50">
+                                    <button @click="saveImportedStudents" :disabled="isImporting || parsedStudents.length === 0" class="w-full bg-green-600 hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-600 disabled:bg-gray-400 dark:disabled:bg-gray-600 text-white font-bold py-2.5 px-4 rounded-lg shadow flex items-center justify-center transition-colors">
+                                        <div v-if="isImporting" class="loader mr-2 border-t-white border-white/30"></div>
+                                        <i v-else class="fas fa-cloud-upload-alt mr-2"></i> 
+                                        {{ isImporting ? 'กำลังบันทึกข้อมูล...' : `บันทึกเข้าชั้น ${importGrade}` }}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 4.2 จัดการรายชื่อ (แก้ไข/ย้าย/ลบ) -->
+                <div v-show="manageSubTab === 'list'">
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-4">
+                        <h2 class="text-xl font-bold text-gray-800 dark:text-white">จัดการข้อมูลนักเรียน</h2>
+                        <div class="flex flex-col sm:flex-row sm:items-center gap-3 w-full sm:w-auto">
+                            <div class="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-start">
+                                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">เลือกชั้น</label>
+                                <select v-model="manageGrade" @change="fetchManageStudents" class="bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white rounded-md shadow-sm p-1.5 border focus:ring-blue-500 focus:border-blue-500 text-sm">
+                                    <option value="" disabled>-- เลือกชั้น --</option>
+                                    <option v-for="grade in grades" :key="grade" :value="grade">{{ grade }}</option>
+                                </select>
+                            </div>
+                            <!-- ปุ่มล้างข้อมูลทั้งหมด -->
+                            <button @click="promptDeleteAll" class="w-full sm:w-auto bg-red-600 hover:bg-red-700 dark:bg-red-700 dark:hover:bg-red-800 text-white px-3 py-2 sm:py-1.5 rounded-md text-sm font-medium transition-colors shadow-sm flex items-center justify-center gap-2" title="ล้างข้อมูลนักเรียนและประวัติการเช็คชื่อทั้งหมด">
+                                <i class="fas fa-exclamation-triangle"></i> ล้างข้อมูลทั้งระบบ
+                            </button>
+                        </div>
+                    </div>
+
+                    <div v-if="isManageLoading" class="flex justify-center py-10"><div class="loader !w-10 !h-10 !border-4 text-blue-500 border-t-blue-500"></div></div>
+                    
+                    <div v-else class="overflow-x-auto w-full rounded-lg border border-gray-200 dark:border-gray-700">
+                        <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                            <thead class="bg-gray-50 dark:bg-gray-900/50">
+                                <tr>
+                                    <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase w-16 min-w-[4rem]">เลขที่</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase w-24 min-w-[6rem]">รหัส</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase min-w-[8rem]">ชื่อ</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase min-w-[8rem]">นามสกุล</th>
+                                    <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase w-20 min-w-[5rem]">สถานะ</th>
+                                    <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase w-48 min-w-[10rem]">จัดการ</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                                <tr v-for="student in manageStudentsList" :key="student.student_id" :class="!student.is_active ? 'bg-red-50 dark:bg-red-900/10' : 'hover:bg-gray-50 dark:hover:bg-gray-700/50'">
+                                    <!-- View Mode vs Edit Mode -->
+                                    <template v-if="editingStudentId !== student.student_id">
+                                        <td class="px-4 py-3 text-center text-sm font-bold" :class="!student.is_active ? 'text-red-700 dark:text-red-400' : 'text-gray-800 dark:text-gray-200'">{{ student.student_number != null ? student.student_number : '-' }}</td>
+                                        <td class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 font-mono">{{ student.student_id }}</td>
+                                        <td class="px-4 py-3 text-sm whitespace-nowrap" :class="!student.is_active ? 'text-red-800 dark:text-red-300' : 'text-gray-900 dark:text-gray-300'">{{ student.first_name }}</td>
+                                        <td class="px-4 py-3 text-sm whitespace-nowrap" :class="!student.is_active ? 'text-red-800 dark:text-red-300' : 'text-gray-900 dark:text-gray-300'">{{ student.last_name }}</td>
+                                        <td class="px-4 py-3 text-center">
+                                            <span v-if="student.is_active" class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-300 whitespace-nowrap">เรียนอยู่</span>
+                                            <span v-else class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-300 whitespace-nowrap">ย้ายออก</span>
+                                        </td>
+                                        <td class="px-4 py-3 text-right text-sm font-medium">
+                                            <div class="flex justify-end gap-3 sm:gap-2">
+                                                <button @click="startEdit(student)" class="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300" title="แก้ไขชื่อ/เลขที่"><i class="fas fa-edit"></i></button>
+                                                <button v-if="student.is_active" @click="confirmAction('moveout', student)" class="text-yellow-600 hover:text-yellow-900 dark:text-yellow-400 dark:hover:text-yellow-300" title="แจ้งย้าย รร."><i class="fas fa-sign-out-alt"></i></button>
+                                                <button v-else @click="confirmAction('restore', student)" class="text-green-600 hover:text-green-900 dark:text-green-400 dark:hover:text-green-300" title="คืนสถานะเรียนอยู่"><i class="fas fa-undo"></i></button>
+                                                <button @click="confirmAction('delete', student)" class="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300" title="ลบถาวร"><i class="fas fa-trash-alt"></i></button>
+                                            </div>
+                                        </td>
+                                    </template>
+                                    
+                                    <template v-else>
+                                        <td class="px-2 py-2 text-center"><input type="number" v-model="editForm.student_number" class="w-16 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white rounded px-1 py-1 text-center text-sm"></td>
+                                        <td class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 font-mono">{{ student.student_id }}</td>
+                                        <td class="px-2 py-2"><input type="text" v-model="editForm.first_name" class="w-full bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white rounded px-2 py-1 text-sm"></td>
+                                        <td class="px-2 py-2"><input type="text" v-model="editForm.last_name" class="w-full bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white rounded px-2 py-1 text-sm"></td>
+                                        <td class="px-4 py-3 text-center text-xs text-gray-400 dark:text-gray-500">-</td>
+                                        <td class="px-4 py-3 text-right text-sm font-medium whitespace-nowrap">
+                                            <button @click="saveEdit(student.student_id)" class="text-green-600 hover:text-green-900 dark:text-green-400 dark:hover:text-green-300 font-bold mr-3">บันทึก</button>
+                                            <button @click="editingStudentId = null" class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">ยกเลิก</button>
+                                        </td>
+                                    </template>
+                                </tr>
+                                <tr v-if="manageStudentsList.length === 0">
+                                    <td colspan="6" class="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
+                                        {{ manageGrade === '' ? 'กรุณาเลือกระดับชั้นเพื่อแสดงข้อมูล' : 'ไม่มีข้อมูลนักเรียนในชั้นนี้' }}
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+        
+        <!-- Toast Notification (ซ่อนตอนพิมพ์) -->
+        <div v-if="showToast" class="fixed bottom-5 left-5 right-5 sm:left-auto sm:right-5 bg-green-600 dark:bg-green-700 text-white px-6 py-3 rounded-lg shadow-lg flex items-center gap-3 transition-opacity duration-300 z-50 max-w-sm mx-auto sm:mx-0 print:hidden">
+            <i class="fas fa-check-circle text-xl"></i>
+            <div>
+                <h4 class="font-bold text-sm">{{ toastTitle }}</h4>
+                <p class="text-xs">{{ toastMessage }}</p>
+            </div>
+        </div>
+
+        <!-- Custom Confirm Modal (ซ่อนตอนพิมพ์) -->
+        <div v-if="modal.show" class="fixed inset-0 bg-black bg-opacity-50 dark:bg-opacity-70 z-50 flex items-center justify-center backdrop-blur-sm p-4 print:hidden">
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 max-w-sm w-full mx-auto transform transition-all border dark:border-gray-700">
+                <div class="flex items-center gap-3 mb-4">
+                    <div :class="modal.type === 'danger' ? 'bg-red-100 text-red-600 dark:bg-red-900/50 dark:text-red-400' : 'bg-yellow-100 text-yellow-600 dark:bg-yellow-900/50 dark:text-yellow-400'" class="p-2 rounded-full">
+                        <i :class="modal.type === 'danger' ? 'fas fa-exclamation-triangle' : 'fas fa-info-circle'" class="text-xl"></i>
+                    </div>
+                    <h3 class="text-lg font-bold text-gray-900 dark:text-white">{{ modal.title }}</h3>
+                </div>
+                
+                <p class="text-sm text-gray-600 dark:text-gray-300 mb-4 leading-relaxed" v-html="modal.message"></p>
+                
+                <div v-if="modal.showInput" class="mb-6">
+                    <input :type="modal.inputType" v-model="modal.inputValue" :placeholder="modal.inputPlaceholder" class="w-full bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white rounded-md p-2 text-sm focus:ring-red-500 focus:border-red-500 transition-colors">
+                    <p v-if="modal.inputError" class="text-xs text-red-500 dark:text-red-400 mt-1"><i class="fas fa-times-circle"></i> {{ modal.inputError }}</p>
+                </div>
+
+                <div class="flex flex-col-reverse sm:flex-row justify-end gap-3" :class="{'mt-0': modal.showInput, 'mt-6': !modal.showInput}">
+                    <button @click="modal.show = false" class="w-full sm:w-auto px-4 py-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-md text-sm font-medium transition-colors">ยกเลิก</button>
+                    <button @click="executeModalAction" :class="modal.type === 'danger' ? 'bg-red-600 hover:bg-red-700 dark:bg-red-600 dark:hover:bg-red-700' : 'bg-yellow-500 hover:bg-yellow-600 dark:bg-yellow-600 dark:hover:bg-yellow-700'" class="w-full sm:w-auto px-4 py-2 text-white rounded-md text-sm font-medium transition-colors flex items-center justify-center">
+                        <div v-if="modal.isLoading" class="loader !w-4 !h-4 !border-2 mr-2 border-t-white border-white/30"></div>
+                        ยืนยัน
+                    </button>
+                </div>
+            </div>
+        </div>
+
     </div>
 
-    <!-- ดึงลิงก์ Google Apps Script ของคุณมาแสดง -->
-    <iframe src="https://script.google.com/macros/s/AKfycbyE1kj_YOFJWBJeeH4M0EaF6iSuTBUaJPenlPuKphkwB-RtpWN7plcVtZeKoKi1A-Adcg/exec" allowfullscreen></iframe>
+    <script>
+        // =========================================================================
+        // ตั้งค่า API: นำลิงก์จาก Google Apps Script ที่ Deploy เสร็จแล้ว มาใส่ที่นี่
+        // =========================================================================
+        const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyE1kj_YOFJWBJeeH4M0EaF6iSuTBUaJPenlPuKphkwB-RtpWN7plcVtZeKoKi1A-Adcg/exec';
 
+        // ฟังก์ชันพระเอกของเราสำหรับคุยกับ Google Apps Script แทน google.script.run
+        async function callApi(action, params = {}) {
+            try {
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    // ส่งแบบ text/plain เพื่อแก้ปัญหา CORS Block จาก Google 
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify({ action: action, params: params })
+                });
+                const result = await response.json();
+                return result;
+            } catch (error) {
+                throw error;
+            }
+        }
+
+        const { createApp } = Vue;
+
+        createApp({
+            data() {
+                const today = new Date().toISOString().split('T')[0];
+                return {
+                    isDarkMode: true,
+                    
+                    currentTab: 'check', 
+                    currentYear: '2569', currentTerm: '1',
+                    selectedDate: today, summaryDate: today,
+                    selectedGrade: 'ป.1', importGrade: 'ป.1', classSummaryGrade: '', manageGrade: '',
+                    grades: ['อ.2', 'อ.3', 'ป.1', 'ป.2', 'ป.3', 'ป.4', 'ป.5', 'ป.6'],
+                    
+                    studentsList: [], gradeStats: [], summary: { total: 0, present: 0, leave: 0, absent: 0, percent: 0, boys: 0, girls: 0, presentBoys: 0, presentGirls: 0 },
+                    classSummaryData: [],
+                    
+                    schoolStats: { total: 0, boys: 0, girls: 0, isLoading: false },
+
+                    manageSubTab: 'list', 
+                    manageStudentsList: [],
+                    editingStudentId: null,
+                    editForm: { student_number: '', first_name: '', last_name: '' },
+
+                    pasteData: '', parsedStudents: [],
+                    
+                    isLoading: false, isSaving: false, isSummaryLoading: false, isClassSummaryLoading: false, isManageLoading: false, isImporting: false,
+                    
+                    showToast: false, toastTitle: '', toastMessage: '',
+                    
+                    modal: { 
+                        show: false, title: '', message: '', type: 'danger', 
+                        actionPayload: null, actionType: '', isLoading: false,
+                        showInput: false, inputValue: '', inputType: 'text', inputPlaceholder: '', inputError: ''
+                    }
+                }
+            },
+            methods: {
+                formatDateThai(dateStr) {
+                    if (!dateStr) return '';
+                    const months = [
+                        'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
+                        'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'
+                    ];
+                    const d = new Date(dateStr);
+                    return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear() + 543}`;
+                },
+
+                printReport() {
+                    const wasDark = this.isDarkMode;
+                    if (wasDark) {
+                        this.isDarkMode = false;
+                        document.documentElement.classList.remove('dark');
+                    }
+                    setTimeout(() => {
+                        window.print();
+                        if (wasDark) {
+                            this.isDarkMode = true;
+                            document.documentElement.classList.add('dark');
+                        }
+                    }, 150);
+                },
+
+                toggleTheme() {
+                    this.isDarkMode = !this.isDarkMode;
+                    if (this.isDarkMode) {
+                        document.documentElement.classList.add('dark');
+                    } else {
+                        document.documentElement.classList.remove('dark');
+                    }
+                },
+                
+                // แปลงฟังก์ชันให้เป็น async/await ใช้งาน API แบบใหม่
+                async fetchStudents() {
+                    this.isLoading = true; this.studentsList = [];
+                    try {
+                        const res = await callApi('getStudents', { gradeLevel: this.selectedGrade });
+                        if(res && res.error) {
+                            alert("เกิดข้อผิดพลาด: " + res.error);
+                        } else {
+                            this.studentsList = res.map(student => ({ ...student, status: 'มา' }));
+                        }
+                    } catch (err) {
+                        alert("Error (API): " + err.message);
+                    } finally {
+                        this.isLoading = false;
+                    }
+                },
+                
+                async saveAttendance() {
+                    if (this.studentsList.length === 0) return;
+                    this.isSaving = true;
+
+                    const records = this.studentsList.map(s => ({
+                        check_date: this.selectedDate,
+                        student_id: String(s.student_id),
+                        grade_level: String(this.selectedGrade),
+                        status: String(s.status),
+                        term: String(this.currentTerm),
+                        academic_year: String(this.currentYear)
+                    }));
+
+                    try {
+                        const res = await callApi('saveAttendanceRecords', { records: records });
+                        if(res && res.success) {
+                            this.triggerToast('บันทึกสำเร็จ', 'บันทึกข้อมูลการเข้าเรียนเรียบร้อย');
+                        } else {
+                            let errorMsg = res && res.error ? (typeof res.error === 'object' ? JSON.stringify(res.error) : res.error) : "ไม่ทราบสาเหตุ";
+                            alert("เกิดข้อผิดพลาดจากฐานข้อมูล:\n" + errorMsg);
+                        }
+                    } catch (err) {
+                        alert("Error (API):\n" + err.message);
+                    } finally {
+                        this.isSaving = false;
+                    }
+                },
+
+                async fetchSchoolStats() {
+                    this.schoolStats.isLoading = true;
+                    try {
+                        const res = await callApi('getActiveStudentCount');
+                        if (res && !res.error) {
+                            this.schoolStats = { total: res.total, boys: res.boys, girls: res.girls, isLoading: false };
+                        } else {
+                            this.schoolStats.isLoading = false;
+                        }
+                    } catch (err) {
+                        this.schoolStats.isLoading = false;
+                    }
+                },
+
+                async fetchSummary() { 
+                    this.isSummaryLoading = true;
+                    this.fetchSchoolStats(); 
+                    
+                    try {
+                        const res = await callApi('getDailySummary', { date: this.summaryDate });
+                        if(res && !res.error) { 
+                            this.calculateSummary(res); 
+                        } else if(res && res.error) { 
+                            alert("เกิดข้อผิดพลาด: " + res.error); 
+                        }
+                    } catch (err) {
+                        alert("Error (API): " + err.message);
+                    } finally {
+                        this.isSummaryLoading = false;
+                    }
+                },
+
+                calculateSummary(records) {
+                    let total = 0, present = 0, leave = 0, absent = 0, boys = 0, girls = 0;
+                    let presentBoys = 0, presentGirls = 0;
+                    
+                    const statsMap = {};
+                    this.grades.forEach(g => {
+                        statsMap[g] = { grade: g, total: 0, present: 0, leave: 0, absent: 0, percent: 0, presentBoys: 0, presentGirls: 0, missingNames: [] };
+                    });
+
+                    records.forEach(r => {
+                        total++;
+                        let sGender = null;
+                        if (r.students) {
+                            sGender = r.students.gender;
+                            if (sGender === 'ชาย') boys++;
+                            if (sGender === 'หญิง') girls++;
+                        }
+                        
+                        const stat = statsMap[r.grade_level];
+                        if (stat) {
+                            stat.total++;
+                            if (r.status === 'มา') { 
+                                present++; stat.present++; 
+                                if (sGender === 'ชาย') { stat.presentBoys++; presentBoys++; }
+                                if (sGender === 'หญิง') { stat.presentGirls++; presentGirls++; }
+                            } 
+                            else if (r.status === 'ลา') { 
+                                leave++; stat.leave++; 
+                                if (r.students) stat.missingNames.push(`${r.students.first_name} (ลา)`); 
+                            } 
+                            else if (r.status === 'ขาด') { 
+                                absent++; stat.absent++; 
+                                if (r.students) stat.missingNames.push(`${r.students.first_name} (ขาด)`); 
+                            }
+                        }
+                    });
+
+                    Object.values(statsMap).forEach(stat => {
+                        stat.percent = stat.total > 0 ? (stat.present / stat.total) * 100 : 0;
+                    });
+
+                    this.gradeStats = Object.values(statsMap);
+                    let percent = total > 0 ? (present / total) * 100 : 0;
+                    this.summary = { total, present, leave, absent, percent, boys, girls, presentBoys, presentGirls };
+                },
+
+                async fetchClassSummary() { 
+                    if (!this.classSummaryGrade) return;
+                    this.isClassSummaryLoading = true;
+                    
+                    try {
+                        const res = await callApi('getClassSummary', { 
+                            gradeLevel: this.classSummaryGrade, 
+                            term: this.currentTerm, 
+                            academicYear: this.currentYear 
+                        });
+                        
+                        if(res && res.error) { 
+                            alert("เกิดข้อผิดพลาด: " + res.error); 
+                        } else { 
+                            this.processClassSummary(res); 
+                        }
+                    } catch (err) {
+                        alert("Error (API): " + err.message);
+                    } finally {
+                        this.isClassSummaryLoading = false;
+                    }
+                },
+
+                processClassSummary(data) {
+                    let processed = data.map(s => {
+                        const totalDays = s.present + s.leave + s.absent;
+                        const percent = totalDays > 0 ? (s.present / totalDays) * 100 : 0;
+                        return { ...s, totalDays, percent };
+                    });
+
+                    processed.sort((a, b) => {
+                        const numA = (a.student_number !== null && a.student_number !== undefined) ? Number(a.student_number) : 9999;
+                        const numB = (b.student_number !== null && b.student_number !== undefined) ? Number(b.student_number) : 9999;
+                        return numA - numB;
+                    });
+
+                    this.classSummaryData = processed;
+                },
+
+                exportClassSummaryToExcel() {
+                    if (this.classSummaryData.length === 0) return;
+                    
+                    const allDatesSet = new Set();
+                    this.classSummaryData.forEach(student => {
+                        if (student.daily_records) {
+                            Object.keys(student.daily_records).forEach(date => allDatesSet.add(date));
+                        }
+                    });
+
+                    const sortedDates = Array.from(allDatesSet).sort((a, b) => new Date(a) - new Date(b));
+
+                    const months = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
+                    const datesByMonth = {};
+                    
+                    sortedDates.forEach(dateStr => {
+                        const d = new Date(dateStr);
+                        const monthName = months[d.getMonth()];
+                        const yearStr = d.getFullYear(); 
+                        const monthKey = `${monthName} ${yearStr}`;
+                        
+                        if (!datesByMonth[monthKey]) datesByMonth[monthKey] = [];
+                        datesByMonth[monthKey].push(dateStr);
+                    });
+
+                    const workbook = XLSX.utils.book_new();
+
+                    // --- สร้างชีท 1: "สรุปรวม" ---
+                    const summaryHeaders = [['เลขที่', 'รหัสประจำตัว', 'ชื่อ-นามสกุล', 'สถานะ', 'วันเปิดเรียนทั้งหมด', 'มา', 'ลา', 'ขาด', 'ร้อยละการมาเรียน (%)']];
+                    const summaryDataRow = this.classSummaryData.map(student => [
+                        student.student_number != null ? student.student_number : '-',
+                        student.student_id,
+                        `${student.first_name} ${student.last_name}`,
+                        student.is_active === false ? 'ย้ายออก' : 'กำลังเรียน',
+                        student.totalDays,
+                        student.present,
+                        student.leave,
+                        student.absent,
+                        student.percent.toFixed(2)
+                    ]);
+                    const summaryWorksheet = XLSX.utils.aoa_to_sheet([...summaryHeaders, ...summaryDataRow]);
+                    summaryWorksheet['!cols'] = [
+                        {wch: 8},  {wch: 15}, {wch: 25}, {wch: 12}, {wch: 18}, {wch: 8}, {wch: 8}, {wch: 8}, {wch: 20}
+                    ];
+                    XLSX.utils.book_append_sheet(workbook, summaryWorksheet, `สรุปรวม`);
+
+
+                    // --- สร้างชีท 2, 3, ... แยกตามแต่ละเดือน ---
+                    if (Object.keys(datesByMonth).length > 0) {
+                        for (const [monthKey, monthDates] of Object.entries(datesByMonth)) {
+                            const dateHeaders = monthDates.map(dStr => {
+                                const d = new Date(dStr);
+                                return `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`;
+                            });
+
+                            const headers = [['รหัสนักเรียน', 'ชื่อ-นามสกุล', ...dateHeaders, 'รวมมา', 'รวมขาด', 'รวมลา']];
+                            const worksheetData = [...headers];
+
+                            this.classSummaryData.forEach(student => {
+                                const fullName = `${student.first_name} ${student.last_name}`;
+                                let monthPresent = 0, monthAbsent = 0, monthLeave = 0;
+
+                                const rowDates = monthDates.map(dateStr => {
+                                    const status = (student.daily_records && student.daily_records[dateStr]) ? student.daily_records[dateStr] : '';
+                                    if (status === 'มา') monthPresent++;
+                                    else if (status === 'ลา') monthLeave++;
+                                    else if (status === 'ขาด') monthAbsent++;
+                                    return status;
+                                });
+
+                                worksheetData.push([
+                                    student.student_id, fullName, ...rowDates, monthPresent, monthAbsent, monthLeave
+                                ]);
+                            });
+
+                            const worksheet = XLSX.utils.aoa_to_sheet(worksheetData);
+                            const cols = [
+                                {wch: 15}, {wch: 25}, ...monthDates.map(() => ({wch: 10})), {wch: 8}, {wch: 8}, {wch: 8}
+                            ];
+                            worksheet['!cols'] = cols;
+
+                            XLSX.utils.book_append_sheet(workbook, worksheet, monthKey.substring(0, 31));
+                        }
+                    }
+
+                    const fileName = `รายงานสรุปเวลาเรียน_${this.classSummaryGrade}_เทอม${this.currentTerm}_ปี${this.currentYear}.xlsx`;
+                    XLSX.writeFile(workbook, fileName);
+                    this.triggerToast('ส่งออกสำเร็จ', `ดาวน์โหลดไฟล์ ${fileName} เรียบร้อยแล้ว`);
+                },
+
+                parsePastedData() {
+                    if (!this.pasteData.trim()) { this.parsedStudents = []; return; }
+                    const rows = this.pasteData.trim().split('\n');
+                    this.parsedStudents = rows.map((row, idx) => {
+                        const cols = row.split('\t');
+                        return {
+                            student_number: idx + 1, 
+                            student_id: (cols[0] || '').trim(),
+                            first_name: (cols[1] || '').trim(),
+                            last_name:  (cols[2] || '').trim(),
+                            gender:     (cols[3] || '').trim(),
+                            grade_level: this.importGrade,
+                            is_active:  true
+                        };
+                    }).filter(s => s.student_id); 
+                },
+
+                handleFileUpload(event) {
+                    const file = event.target.files[0]; if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        const workbook = XLSX.read(e.target.result, { type: 'binary' });
+                        const jsonData = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { header: 1 });
+                        
+                        this.parsedStudents = jsonData.slice(1).map((cols, idx) => {
+                            if(!cols || cols.length === 0) return null;
+                            return {
+                                student_number: idx + 1,
+                                student_id: String(cols[0] || '').trim(),
+                                first_name: String(cols[1] || '').trim(),
+                                last_name:  String(cols[2] || '').trim(),
+                                gender:     String(cols[3] || '').trim(),
+                                grade_level: this.importGrade,
+                                is_active:  true
+                            };
+                        }).filter(s => s && s.student_id); 
+                        this.pasteData = ''; this.$refs.fileInput.value = '';
+                    };
+                    reader.readAsBinaryString(file);
+                },
+
+                async saveImportedStudents() {
+                    if (this.parsedStudents.length === 0) return;
+                    this.isImporting = true;
+                    const finalData = this.parsedStudents.map(s => ({ ...s, grade_level: String(this.importGrade) }));
+
+                    try {
+                        const res = await callApi('saveNewStudents', { studentsArray: finalData });
+                        if(res && res.success) {
+                            this.triggerToast('นำเข้าสำเร็จ', `เพิ่มนักเรียนชั้น ${this.importGrade} จำนวน ${finalData.length} คน เรียบร้อยแล้ว`);
+                            this.parsedStudents = []; this.pasteData = '';
+                        } else { 
+                            let errorMsg = res && res.error ? (typeof res.error === 'object' ? JSON.stringify(res.error) : res.error) : "ไม่ทราบสาเหตุ";
+                            alert("เกิดข้อผิดพลาดจากฐานข้อมูล:\n" + errorMsg); 
+                        }
+                    } catch (err) {
+                        alert("Error (API):\n" + err.message);
+                    } finally {
+                        this.isImporting = false;
+                    }
+                },
+
+                async fetchManageStudents() {
+                    if (!this.manageGrade) return;
+                    this.isManageLoading = true; this.editingStudentId = null;
+                    
+                    try {
+                        const res = await callApi('getAllStudentsForManage', { gradeLevel: this.manageGrade });
+                        if(res && !res.error) this.manageStudentsList = res;
+                        else if(res && res.error) alert("เกิดข้อผิดพลาด:\n" + res.error);
+                    } catch (err) {
+                        alert("Error (API): " + err.message);
+                    } finally {
+                        this.isManageLoading = false;
+                    }
+                },
+
+                startEdit(student) {
+                    this.editingStudentId = student.student_id;
+                    this.editForm = { student_number: student.student_number, first_name: student.first_name, last_name: student.last_name };
+                },
+
+                async saveEdit(studentId) {
+                    const updateData = {
+                        student_number: parseInt(this.editForm.student_number) || null,
+                        first_name: String(this.editForm.first_name),
+                        last_name: String(this.editForm.last_name)
+                    };
+
+                    const idx = this.manageStudentsList.findIndex(s => s.student_id === studentId);
+                    if(idx !== -1) {
+                        this.manageStudentsList[idx] = { ...this.manageStudentsList[idx], ...updateData };
+                    }
+                    this.editingStudentId = null;
+
+                    try {
+                        const res = await callApi('updateStudentData', { studentId: studentId, updateData: updateData });
+                        if(res && res.success) this.triggerToast('อัปเดตสำเร็จ', 'แก้ไขข้อมูลนักเรียนเรียบร้อย');
+                        else alert("เกิดข้อผิดพลาดจากฐานข้อมูล:\n" + (res ? res.error : "ไม่ทราบสาเหตุ"));
+                    } catch (err) {
+                        alert("Error (API):\n" + err.message);
+                    }
+                },
+
+                promptDeleteAll() {
+                    this.modal.actionType = 'deleteAll';
+                    this.modal.type = 'danger';
+                    this.modal.title = 'ล้างข้อมูลทั้งหมดในระบบ';
+                    this.modal.message = '<b>คำเตือนขั้นสูงสุด:</b> การกระทำนี้จะ <span class="text-red-600 dark:text-red-400 font-bold">ลบข้อมูลนักเรียนและประวัติการเช็คชื่อทั้งหมด 100% ออกจากฐานข้อมูล</span> และไม่สามารถกู้คืนได้<br><br>กรุณากรอกรหัสผ่านเพื่อยืนยันสิทธิ์:';
+                    this.modal.showInput = true;
+                    this.modal.inputType = 'password';
+                    this.modal.inputValue = '';
+                    this.modal.inputError = '';
+                    this.modal.inputPlaceholder = 'ใส่รหัสผ่านที่นี่...';
+                    this.modal.show = true;
+                },
+
+                confirmAction(type, student) {
+                    this.modal.actionType = type;
+                    this.modal.actionPayload = student;
+                    this.modal.showInput = false; 
+                    this.modal.show = true;
+                    
+                    const name = `${student.first_name} ${student.last_name}`;
+                    if (type === 'delete') {
+                        this.modal.type = 'danger';
+                        this.modal.title = 'ยืนยันการลบข้อมูลถาวร';
+                        this.modal.message = `คุณต้องการลบข้อมูลของ <b class="text-red-600 dark:text-red-400">${name}</b> ใช่หรือไม่?<br><span class="text-xs text-gray-500 dark:text-gray-400 mt-2 block">คำเตือน: ประวัติการเช็คชื่อของเด็กคนนี้จะถูกลบไปด้วย หากเพียงแค่ย้ายออก แนะนำให้ใช้ปุ่ม "แจ้งย้าย รร." แทน</span>`;
+                    } else if (type === 'moveout') {
+                        this.modal.type = 'warning';
+                        this.modal.title = 'แจ้งย้ายโรงเรียน (เปลี่ยนสถานะ)';
+                        this.modal.message = `ยืนยันการเปลี่ยนสถานะ <b class="text-yellow-600 dark:text-yellow-400">${name}</b> เป็น "ย้ายออก" ใช่หรือไม่?<br><span class="text-xs text-gray-500 dark:text-gray-400 mt-2 block">รายชื่อจะไม่แสดงในหน้าเช็คชื่ออีก แต่ประวัติการมาเรียนที่ผ่านมาจะยังคงอยู่เพื่อการทำสรุป</span>`;
+                    } else if (type === 'restore') {
+                        this.modal.type = 'warning';
+                        this.modal.title = 'คืนสถานะกำลังศึกษา';
+                        this.modal.message = `ยืนยันการคืนสถานะให้ <b class="text-green-600 dark:text-green-400">${name}</b> กลับมาเรียนตามปกติ?`;
+                    }
+                },
+
+                async executeModalAction() {
+                    const type = this.modal.actionType;
+                    const student = this.modal.actionPayload;
+
+                    if (type === 'deleteAll') {
+                        if (this.modal.inputValue !== 'Praween080@') {
+                            this.modal.inputError = 'รหัสผ่านไม่ถูกต้อง! ไม่อนุญาตให้ลบข้อมูล';
+                            return;
+                        }
+                        this.modal.inputError = '';
+                        this.modal.isLoading = true;
+
+                        try {
+                            const res = await callApi('deleteAllSystemData');
+                            if(res && res.success) {
+                                this.manageStudentsList = [];
+                                this.studentsList = [];
+                                this.triggerToast('ลบข้อมูลสำเร็จ', 'ล้างข้อมูลนักเรียนทั้งหมดเรียบร้อยแล้ว');
+                            } else {
+                                let errorMsg = res && res.error ? (typeof res.error === 'object' ? JSON.stringify(res.error) : res.error) : "ไม่ทราบสาเหตุ";
+                                alert("เกิดข้อผิดพลาด:\n" + errorMsg);
+                            }
+                        } catch (err) {
+                            alert("Error (API):\n" + err.message);
+                        } finally {
+                            this.modal.show = false; this.modal.isLoading = false;
+                        }
+                        return;
+                    }
+
+                    this.modal.isLoading = true;
+                    if (type === 'delete') {
+                        try {
+                            const res = await callApi('deleteStudentData', { studentId: student.student_id });
+                            if(res && res.success) {
+                                this.manageStudentsList = this.manageStudentsList.filter(s => s.student_id !== student.student_id);
+                                this.triggerToast('ลบสำเร็จ', 'ลบข้อมูลนักเรียนออกจากระบบถาวร');
+                            } else {
+                                alert("เกิดข้อผิดพลาด:\n" + (res ? res.error : "Unknown error"));
+                            }
+                        } catch (err) {
+                            alert("Error (API):\n" + err.message);
+                        } finally {
+                            this.modal.show = false; this.modal.isLoading = false;
+                        }
+                    } 
+                    else if (type === 'moveout' || type === 'restore') {
+                        const newActiveStatus = type === 'restore' ? true : false;
+                        const updateData = { is_active: newActiveStatus };
+                        
+                        try {
+                            const res = await callApi('updateStudentData', { studentId: student.student_id, updateData: updateData });
+                            if(res && res.success) {
+                                const idx = this.manageStudentsList.findIndex(s => s.student_id === student.student_id);
+                                if(idx !== -1) this.manageStudentsList[idx].is_active = newActiveStatus;
+                                this.triggerToast('อัปเดตสำเร็จ', type === 'moveout' ? 'บันทึกสถานะย้ายออกเรียบร้อย' : 'คืนสถานะเรียนอยู่เรียบร้อย');
+                            } else {
+                                alert("เกิดข้อผิดพลาด:\n" + (res ? res.error : "Unknown error"));
+                            }
+                        } catch (err) {
+                            alert("Error (API):\n" + err.message);
+                        } finally {
+                            this.modal.show = false; this.modal.isLoading = false;
+                        }
+                    }
+                },
+
+                triggerToast(title, message) {
+                    this.toastTitle = title; this.toastMessage = message; this.showToast = true;
+                    setTimeout(() => this.showToast = false, 4000);
+                }
+            },
+            mounted() {
+                if(this.isDarkMode) {
+                    document.documentElement.classList.add('dark');
+                }
+            }
+        }).mount('#app')
+    </script>
 </body>
 </html>
