@@ -43,6 +43,344 @@
             }
             body { background-color: white !important; }
         }
+
+        /* =====================================================
+           3D & Touch Interaction Effects
+           ===================================================== */
+
+        /* ป้องกัน iOS/Android ขึ้นไฮไลต์สีเทาตอนแตะ — เราใช้ ripple แทน */
+        button, label.cursor-pointer, a, input[type="radio"] + div {
+            -webkit-tap-highlight-color: transparent;
+            touch-action: manipulation;
+        }
+
+        @media (prefers-reduced-motion: no-preference) and not print {
+
+            /* ตั้ง perspective ที่ตัวแอป เพื่อให้ลูก ๆ ทำ rotateX/Y แล้วดู 3D จริง */
+            #app {
+                perspective: 1400px;
+                perspective-origin: 50% 30%;
+            }
+
+            /* ไอคอนโรงเรียนบน Navbar — ลอยเบา ๆ */
+            @keyframes float3d {
+                0%, 100% { transform: translateY(0) rotate(0); }
+                50%      { transform: translateY(-4px) rotate(-3deg); }
+            }
+            nav .fa-school {
+                display: inline-block;
+                animation: float3d 3.2s ease-in-out infinite;
+                filter: drop-shadow(0 4px 6px rgba(0,0,0,0.35));
+                transform-origin: center bottom;
+            }
+
+            /* Navbar เด้งตัวลึกเล็กน้อย */
+            nav.bg-blue-600,
+            nav.dark\:bg-blue-800 {
+                box-shadow: 0 6px 18px -6px rgba(37, 99, 235, 0.45),
+                            0 2px 4px rgba(0,0,0,0.08);
+            }
+
+            /* ===== การ์ดเนื้อหา ===== */
+            .rounded-xl {
+                transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+                            box-shadow 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+                transform-style: preserve-3d;
+                will-change: transform;
+            }
+            @media (hover: hover) {
+                .rounded-xl.shadow-md:hover,
+                .rounded-xl.shadow-sm:hover,
+                .rounded-xl.shadow-lg:hover {
+                    transform: translateY(-3px) scale(1.004);
+                    box-shadow: 0 20px 35px -12px rgba(15, 23, 42, 0.22),
+                                0 8px 14px -8px rgba(15, 23, 42, 0.15);
+                }
+            }
+            .dark .rounded-xl.shadow-md:hover,
+            .dark .rounded-xl.shadow-sm:hover,
+            .dark .rounded-xl.shadow-lg:hover {
+                box-shadow: 0 20px 35px -12px rgba(0,0,0,0.55),
+                            0 8px 14px -8px rgba(0,0,0,0.4);
+            }
+
+            /* การ์ดสรุป 4 ใบ — ลอยเข้ามาจากด้านล่างพร้อมหมุนเข้า */
+            @keyframes cardEntry3d {
+                from {
+                    opacity: 0;
+                    transform: translateY(28px) rotateX(-18deg) scale(0.96);
+                }
+                to {
+                    opacity: 1;
+                    transform: translateY(0) rotateX(0) scale(1);
+                }
+            }
+            .border-l-4.border-blue-500,
+            .border-l-4.border-green-500,
+            .border-l-4.border-yellow-500,
+            .border-l-4.border-red-500 {
+                animation: cardEntry3d 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
+                transform-origin: 50% 100%;
+            }
+            .border-l-4.border-green-500  { animation-delay: 0.08s; }
+            .border-l-4.border-yellow-500 { animation-delay: 0.16s; }
+            .border-l-4.border-red-500    { animation-delay: 0.24s; }
+
+            /* ===== ปุ่ม: 3D press + Ripple แบบอลังการ ===== */
+            button {
+                position: relative;
+                overflow: visible;  /* ให้ glow/burst ทะลุออกได้ */
+                transform: translateZ(0);
+                transform-style: preserve-3d;
+                transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1),
+                            box-shadow 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+                            filter 0.25s ease;
+                isolation: isolate;
+            }
+            /* layer ภายในที่ครอบ ripple (กันล้น border-radius) */
+            button::before {
+                content: "";
+                position: absolute;
+                inset: 0;
+                border-radius: inherit;
+                overflow: hidden;
+                pointer-events: none;
+                z-index: 0;
+            }
+            /* sheen layer — แถบแสงวิ่งผ่านตอน hover */
+            button::after {
+                content: "";
+                position: absolute;
+                inset: 0;
+                border-radius: inherit;
+                background: linear-gradient(115deg,
+                    transparent 30%,
+                    rgba(255,255,255,0.35) 50%,
+                    transparent 70%);
+                background-size: 250% 100%;
+                background-position: -150% 0;
+                pointer-events: none;
+                opacity: 0;
+                transition: opacity 0.3s ease;
+                z-index: 1;
+                mix-blend-mode: overlay;
+            }
+            @media (hover: hover) {
+                button:not(:disabled):hover {
+                    transform: translateY(-3px) translateZ(8px) scale(1.02);
+                    filter: brightness(1.08) saturate(1.1);
+                }
+                button:not(:disabled):hover::after {
+                    opacity: 1;
+                    animation: sheen-sweep 0.9s cubic-bezier(0.4, 0, 0.2, 1);
+                }
+            }
+            @keyframes sheen-sweep {
+                from { background-position: -150% 0; }
+                to   { background-position:  250% 0; }
+            }
+            button:not(:disabled):active {
+                transform: translateY(2px) scale(0.93) translateZ(-2px) rotateX(8deg);
+                filter: brightness(0.88) saturate(0.95);
+                transition-duration: 0.08s;
+            }
+            button:disabled { transform: none !important; }
+
+            /* เนื้อหาภายในปุ่มต้องอยู่เหนือ ::before/::after */
+            button > * { position: relative; z-index: 2; }
+
+            /* ปุ่ม "บันทึก" ตัวใหญ่ — เงาเขียวลึก + halo */
+            button.bg-green-600.py-3 {
+                box-shadow: 0 10px 24px -8px rgba(22,163,74,0.6),
+                            0 4px 10px -4px rgba(0,0,0,0.15),
+                            inset 0 1px 0 rgba(255,255,255,0.25);
+            }
+            button.bg-green-600.py-3:not(:disabled):hover {
+                box-shadow: 0 20px 38px -10px rgba(22,163,74,0.75),
+                            0 8px 16px -6px rgba(0,0,0,0.25),
+                            0 0 30px rgba(74, 222, 128, 0.4),
+                            inset 0 1px 0 rgba(255,255,255,0.35);
+            }
+            button.bg-green-600.py-3:not(:disabled):active {
+                box-shadow: 0 3px 8px -2px rgba(22,163,74,0.5),
+                            inset 0 2px 4px rgba(0,0,0,0.2);
+            }
+
+            /* ปุ่ม indigo "ดึงรายชื่อ" — เงาน้ำเงินม่วง */
+            button.bg-indigo-600 {
+                box-shadow: 0 8px 20px -6px rgba(79,70,229,0.5),
+                            inset 0 1px 0 rgba(255,255,255,0.25);
+            }
+            button.bg-indigo-600:not(:disabled):hover {
+                box-shadow: 0 16px 32px -8px rgba(79,70,229,0.7),
+                            0 0 24px rgba(129, 140, 248, 0.45),
+                            inset 0 1px 0 rgba(255,255,255,0.3);
+            }
+
+            /* ปุ่มแดง */
+            button.bg-red-600,
+            button.bg-red-700 {
+                box-shadow: 0 8px 20px -6px rgba(220,38,38,0.5),
+                            inset 0 1px 0 rgba(255,255,255,0.2);
+            }
+            button.bg-red-600:not(:disabled):hover,
+            button.bg-red-700:not(:disabled):hover {
+                box-shadow: 0 16px 32px -8px rgba(220,38,38,0.7),
+                            0 0 24px rgba(248, 113, 113, 0.45),
+                            inset 0 1px 0 rgba(255,255,255,0.3);
+            }
+
+            /* ===== Shockwave (วงคลื่นวงนอก) ===== */
+            .shockwave-fx {
+                position: absolute;
+                top: 50%; left: 50%;
+                width: 10px; height: 10px;
+                border-radius: 50%;
+                border: 2px solid rgba(255,255,255,0.85);
+                transform: translate(-50%, -50%) scale(0);
+                pointer-events: none;
+                animation: shockwave-grow 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+                z-index: 10;
+            }
+            @keyframes shockwave-grow {
+                0%   { transform: translate(-50%, -50%) scale(0);  opacity: 0.9; border-width: 3px; }
+                60%  { opacity: 0.5; }
+                100% { transform: translate(-50%, -50%) scale(14); opacity: 0; border-width: 1px; }
+            }
+            /* shockwave สีตามปุ่ม */
+            button.bg-green-600 .shockwave-fx,
+            button.bg-green-500 .shockwave-fx { border-color: rgba(134, 239, 172, 0.95); }
+            button.bg-red-600 .shockwave-fx,
+            button.bg-red-700 .shockwave-fx  { border-color: rgba(252, 165, 165, 0.95); }
+            button.bg-indigo-600 .shockwave-fx { border-color: rgba(165, 180, 252, 0.95); }
+            button.bg-blue-600 .shockwave-fx   { border-color: rgba(147, 197, 253, 0.95); }
+
+            /* ===== Glow halo (เรืองแสงรอบปุ่มชั่วครู่) ===== */
+            .glow-fx {
+                position: absolute;
+                inset: -4px;
+                border-radius: inherit;
+                pointer-events: none;
+                box-shadow: 0 0 0 0 currentColor;
+                animation: glow-pulse 0.65s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+                z-index: -1;
+                opacity: 0.7;
+            }
+            @keyframes glow-pulse {
+                0%   { box-shadow: 0 0 0 0 currentColor; opacity: 0.85; }
+                100% { box-shadow: 0 0 40px 8px transparent; opacity: 0; }
+            }
+
+            /* ===== Particle burst (ประกายระยิบ) ===== */
+            .spark-fx {
+                position: absolute;
+                top: 50%; left: 50%;
+                width: 6px; height: 6px;
+                border-radius: 50%;
+                background: radial-gradient(circle, #fff 0%, rgba(255,255,255,0.6) 40%, transparent 70%);
+                box-shadow: 0 0 8px rgba(255,255,255,0.9),
+                            0 0 16px var(--spark-color, rgba(255,255,255,0.6));
+                pointer-events: none;
+                transform: translate(-50%, -50%);
+                animation: spark-fly 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+                z-index: 12;
+            }
+            @keyframes spark-fly {
+                0%   { transform: translate(-50%, -50%) scale(0.4); opacity: 1; }
+                70%  { opacity: 1; }
+                100% {
+                    transform: translate(calc(-50% + var(--dx, 0px)),
+                                         calc(-50% + var(--dy, 0px)))
+                               scale(0.2);
+                    opacity: 0;
+                }
+            }
+
+            /* ===== Radio "มา/ลา/ขาด" — กดแล้วนูนเด้ง ===== */
+            label.cursor-pointer > div {
+                position: relative;
+                overflow: hidden;
+                transition: transform 0.18s cubic-bezier(0.4, 0, 0.2, 1),
+                            box-shadow 0.22s ease,
+                            background-color 0.2s ease,
+                            border-color 0.2s ease,
+                            color 0.2s ease;
+                transform: translateZ(0);
+            }
+            label.cursor-pointer:active > div {
+                transform: scale(0.93);
+            }
+            label.cursor-pointer input:checked + div {
+                transform: translateY(-1px);
+                box-shadow: 0 6px 14px -4px rgba(0,0,0,0.25),
+                            0 2px 4px -2px rgba(0,0,0,0.15);
+                z-index: 1;
+            }
+
+            /* ===== Ripple (สร้างจาก JS) ===== */
+            .ripple-fx {
+                position: absolute;
+                border-radius: 50%;
+                background: rgba(255, 255, 255, 0.55);
+                transform: scale(0);
+                opacity: 0.9;
+                pointer-events: none;
+                animation: ripple-grow 0.6s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+                mix-blend-mode: screen;
+            }
+            .dark .ripple-fx { background: rgba(255,255,255,0.35); }
+            /* ปุ่มพื้นสีอ่อน ใช้ ripple สีเข้มกว่า */
+            button.text-blue-600 .ripple-fx,
+            button.text-gray-500 .ripple-fx,
+            button.bg-gray-100 .ripple-fx,
+            button.bg-blue-50 .ripple-fx,
+            label.cursor-pointer > div .ripple-fx {
+                background: rgba(59, 130, 246, 0.35);
+                mix-blend-mode: multiply;
+            }
+            @keyframes ripple-grow {
+                to { transform: scale(4); opacity: 0; }
+            }
+
+            /* ===== Tabs: ขีดล่างขยับนุ่ม ===== */
+            [class*="border-b-2"][class*="border-blue-500"] {
+                transition: transform 0.2s ease;
+            }
+
+            /* ===== Modal: หมุนเข้าแบบ 3D ===== */
+            @keyframes modalIn3d {
+                from {
+                    opacity: 0;
+                    transform: scale(0.85) translateY(24px) rotateX(-18deg);
+                }
+                to {
+                    opacity: 1;
+                    transform: scale(1) translateY(0) rotateX(0);
+                }
+            }
+            .fixed.inset-0 > .rounded-lg {
+                animation: modalIn3d 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+                transform-style: preserve-3d;
+            }
+
+            /* ===== Toast: เด้งขึ้นจากด้านล่าง ===== */
+            @keyframes toastIn3d {
+                from { opacity: 0; transform: translateY(50px) scale(0.85) rotateX(20deg); }
+                to   { opacity: 1; transform: translateY(0) scale(1) rotateX(0); }
+            }
+            .fixed.bottom-5 {
+                animation: toastIn3d 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+                transform-origin: 50% 100%;
+            }
+
+            /* แถวในตาราง — แตะเด้งเบา ๆ */
+            tbody tr {
+                transition: transform 0.18s ease, background-color 0.2s ease;
+            }
+            tbody tr:active {
+                transform: scale(0.995);
+            }
+        }
     </style>
 </head>
 <body class="bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100 transition-colors duration-300">
@@ -1168,6 +1506,134 @@
                 }
             }
         }).mount('#app')
+
+        // =========================================================
+        // Ripple effect (รองรับทั้งคลิกเมาส์และการแตะบนมือถือ)
+        // ใช้ pointerdown — รวมทั้ง mouse, touch, pen
+        // =========================================================
+        (function attachRippleEffect() {
+            const isReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+            if (isReducedMotion) return;
+
+            // หาสีหลักของปุ่ม (สำหรับ spark) จากคลาส Tailwind
+            function getAccentColor(el) {
+                const cl = el.className || '';
+                if (/bg-green/.test(cl))  return 'rgba(74,222,128,0.9)';
+                if (/bg-red/.test(cl))    return 'rgba(248,113,113,0.9)';
+                if (/bg-indigo/.test(cl)) return 'rgba(165,180,252,0.95)';
+                if (/bg-blue/.test(cl))   return 'rgba(147,197,253,0.95)';
+                if (/bg-yellow/.test(cl)) return 'rgba(253,224,71,0.95)';
+                return 'rgba(255,255,255,0.85)';
+            }
+
+            // สร้างประกาย sparks กระจายเป็นวงรอบจุดกด
+            function spawnSparks(host, x, y, count, color) {
+                for (let i = 0; i < count; i++) {
+                    const spark = document.createElement('span');
+                    spark.className = 'spark-fx';
+                    const angle = (Math.PI * 2 * i) / count + Math.random() * 0.4;
+                    const dist  = 40 + Math.random() * 50;
+                    spark.style.left = x + 'px';
+                    spark.style.top  = y + 'px';
+                    spark.style.setProperty('--dx', Math.cos(angle) * dist + 'px');
+                    spark.style.setProperty('--dy', Math.sin(angle) * dist + 'px');
+                    spark.style.setProperty('--spark-color', color);
+                    spark.style.animationDelay = (Math.random() * 80) + 'ms';
+                    spark.style.width  = (4 + Math.random() * 4) + 'px';
+                    spark.style.height = spark.style.width;
+                    host.appendChild(spark);
+                    spark.addEventListener('animationend', () => spark.remove(), { once: true });
+                    setTimeout(() => spark.remove(), 900);
+                }
+            }
+
+            document.addEventListener('pointerdown', function (e) {
+                // หาปุ่มหรือ label (radio มา/ลา/ขาด) ที่ถูกกด
+                let host = e.target.closest('button:not(:disabled)');
+                let isLabel = false;
+                if (!host) {
+                    const label = e.target.closest('label.cursor-pointer');
+                    if (label) {
+                        host = label.querySelector('div');
+                        isLabel = true;
+                    }
+                }
+                if (!host) return;
+
+                const rect = host.getBoundingClientRect();
+                if (rect.width === 0 || rect.height === 0) return;
+
+                const px = e.clientX - rect.left;
+                const py = e.clientY - rect.top;
+                const accent = getAccentColor(host);
+
+                // 1) Ripple จากจุดกด
+                const size = Math.max(rect.width, rect.height) * 2;
+                const ripple = document.createElement('span');
+                ripple.className = 'ripple-fx';
+                ripple.style.width = size + 'px';
+                ripple.style.height = size + 'px';
+                ripple.style.left = (px - size / 2) + 'px';
+                ripple.style.top  = (py - size / 2) + 'px';
+                host.appendChild(ripple);
+                ripple.addEventListener('animationend', () => ripple.remove(), { once: true });
+                setTimeout(() => ripple.remove(), 900);
+
+                // 2) Shockwave (วงคลื่นจากจุดกดออกข้างนอก) — ปุ่มใหญ่เท่านั้น
+                const isBigButton = !isLabel && (rect.width > 90 || rect.height > 40);
+                if (isBigButton) {
+                    const shock = document.createElement('span');
+                    shock.className = 'shockwave-fx';
+                    shock.style.left = px + 'px';
+                    shock.style.top  = py + 'px';
+                    host.appendChild(shock);
+                    shock.addEventListener('animationend', () => shock.remove(), { once: true });
+                    setTimeout(() => shock.remove(), 900);
+
+                    // 3) Glow halo
+                    const glow = document.createElement('span');
+                    glow.className = 'glow-fx';
+                    glow.style.color = accent;
+                    host.appendChild(glow);
+                    glow.addEventListener('animationend', () => glow.remove(), { once: true });
+                    setTimeout(() => glow.remove(), 900);
+
+                    // 4) Particle sparks
+                    spawnSparks(host, px, py, 10, accent);
+                }
+            }, { passive: true });
+
+            // ===== Subtle 3D tilt บนการ์ดสรุป (เฉพาะอุปกรณ์ที่มี hover จริง) =====
+            const hasHover = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+            if (!hasHover) return;
+
+            const tiltSelector = '.rounded-xl.shadow-md, .rounded-xl.shadow-sm, .border-l-4';
+            document.addEventListener('pointermove', function (e) {
+                const card = e.target.closest(tiltSelector);
+                if (!card || card.dataset.noTilt === 'true') return;
+                const rect = card.getBoundingClientRect();
+                const px = (e.clientX - rect.left) / rect.width;  // 0..1
+                const py = (e.clientY - rect.top)  / rect.height; // 0..1
+                const rotY = (px - 0.5) * 6;   // -3..+3 deg
+                const rotX = (0.5 - py) * 6;
+                card.style.transform =
+                    `perspective(1000px) rotateX(${rotX.toFixed(2)}deg) rotateY(${rotY.toFixed(2)}deg) translateY(-3px) scale(1.004)`;
+            }, { passive: true });
+
+            document.addEventListener('pointerleave', function (e) {
+                // ไม่ใช้ — pointerleave บน document ไม่ค่อยยิง
+            }, true);
+
+            // คืนค่าเมื่อ pointer ออกจากการ์ด
+            document.addEventListener('pointerout', function (e) {
+                const card = e.target.closest(tiltSelector);
+                if (!card) return;
+                // ออกไปนอกการ์ดจริง ๆ
+                if (!card.contains(e.relatedTarget)) {
+                    card.style.transform = '';
+                }
+            }, true);
+        })();
     </script>
 </body>
 </html>
