@@ -357,6 +357,167 @@
                 transform: scale(0.995);
             }
         }
+
+        /* =====================================================
+           Success Animation Overlay (เต็มจอตอนบันทึกสำเร็จ)
+           ===================================================== */
+        .success-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 100;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: radial-gradient(circle at center,
+                rgba(16, 185, 129, 0.18) 0%,
+                rgba(0, 0, 0, 0.45) 70%);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            animation: overlayFade 0.35s ease-out, overlayFadeOut 0.4s ease-in 1.8s forwards;
+            pointer-events: auto;
+        }
+        @keyframes overlayFade {
+            from { opacity: 0; }
+            to   { opacity: 1; }
+        }
+        @keyframes overlayFadeOut {
+            to { opacity: 0; }
+        }
+
+        .success-stage {
+            position: relative;
+            width: min(80vw, 360px);
+            height: min(80vw, 360px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* วงกลมเขียวกลาง — scale + bounce */
+        .success-circle {
+            position: relative;
+            width: 70%;
+            height: 70%;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            box-shadow: 0 30px 60px -15px rgba(16,185,129,0.6),
+                        0 0 80px 10px rgba(16,185,129,0.45),
+                        inset 0 -8px 20px rgba(0,0,0,0.15),
+                        inset 0 4px 10px rgba(255,255,255,0.25);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            animation: circlePop 0.7s cubic-bezier(0.34, 1.7, 0.64, 1) backwards;
+            transform-style: preserve-3d;
+        }
+        @keyframes circlePop {
+            0%   { opacity: 0; transform: scale(0.2) rotate(-180deg); }
+            70%  { opacity: 1; transform: scale(1.08) rotate(10deg); }
+            100% { opacity: 1; transform: scale(1) rotate(0deg); }
+        }
+
+        /* วงคลื่นรอบนอก (3 ring ขยายออก) */
+        .success-ring {
+            position: absolute;
+            inset: 15%;
+            border-radius: 50%;
+            border: 3px solid rgba(16, 185, 129, 0.7);
+            opacity: 0;
+            animation: ringExpand 1.6s cubic-bezier(0.16, 1, 0.3, 1) 0.3s infinite;
+        }
+        .success-ring:nth-child(2) { animation-delay: 0.6s; border-color: rgba(110, 231, 183, 0.6); }
+        .success-ring:nth-child(3) { animation-delay: 0.9s; border-color: rgba(167, 243, 208, 0.5); }
+        @keyframes ringExpand {
+            0%   { transform: scale(1);   opacity: 0.9; border-width: 4px; }
+            100% { transform: scale(2.2); opacity: 0;   border-width: 1px; }
+        }
+
+        /* เช็คมาร์ก SVG — วาดเส้นทีละช่วง */
+        .success-check {
+            width: 55%;
+            height: 55%;
+            stroke: white;
+            stroke-width: 7;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            fill: none;
+            filter: drop-shadow(0 4px 8px rgba(0,0,0,0.2));
+        }
+        .success-check path {
+            stroke-dasharray: 100;
+            stroke-dashoffset: 100;
+            animation: drawCheck 0.55s cubic-bezier(0.65, 0, 0.35, 1) 0.45s forwards;
+        }
+        @keyframes drawCheck {
+            to { stroke-dashoffset: 0; }
+        }
+
+        /* ข้อความสำเร็จ */
+        .success-text {
+            position: absolute;
+            top: calc(100% + 24px);
+            left: 50%;
+            transform: translateX(-50%);
+            text-align: center;
+            color: white;
+            white-space: nowrap;
+            animation: textBounce 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) 0.7s backwards;
+            text-shadow: 0 4px 16px rgba(0,0,0,0.5);
+        }
+        .success-text .big {
+            font-size: clamp(1.75rem, 5vw, 2.5rem);
+            font-weight: 900;
+            letter-spacing: 0.02em;
+            display: block;
+            background: linear-gradient(135deg, #fff 0%, #d1fae5 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
+        }
+        .success-text .sub {
+            font-size: clamp(0.85rem, 2vw, 1rem);
+            font-weight: 500;
+            opacity: 0.95;
+            margin-top: 4px;
+            display: block;
+        }
+        @keyframes textBounce {
+            0%   { opacity: 0; transform: translateX(-50%) translateY(20px) scale(0.7); }
+            60%  { opacity: 1; transform: translateX(-50%) translateY(-4px) scale(1.05); }
+            100% { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+        }
+
+        /* Confetti — กระจาย 24 ชิ้น */
+        .confetti {
+            position: absolute;
+            top: 50%; left: 50%;
+            width: 12px; height: 12px;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            opacity: 0;
+            animation: confettiFly 1.4s cubic-bezier(0.16, 1, 0.3, 1) 0.4s forwards;
+        }
+        @keyframes confettiFly {
+            0%   { opacity: 1; transform: translate(-50%, -50%) scale(0.5) rotate(0deg); }
+            100% {
+                opacity: 0;
+                transform: translate(calc(-50% + var(--cx)), calc(-50% + var(--cy)))
+                           scale(1) rotate(var(--cr, 720deg));
+            }
+        }
+
+        /* ปุ่มที่บันทึกสำเร็จ — เปล่งแสงเขียวสว่างชั่วครู่ */
+        .save-success-pulse {
+            animation: savePulse 0.8s ease-out;
+        }
+        @keyframes savePulse {
+            0%   { box-shadow: 0 0 0 0 rgba(16,185,129,0.7); }
+            100% { box-shadow: 0 0 0 30px rgba(16,185,129,0); }
+        }
+
+        /* ป้องกัน scrollbar เด้งตอน overlay เปิด */
+        body.success-locked { overflow: hidden; }
     </style>
 </head>
 <body class="bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100 transition-colors duration-300">
@@ -889,6 +1050,46 @@
             </div>
         </div>
         
+        <!-- Success Animation Overlay (เต็มจอตอนบันทึกสำเร็จ)
+             ใช้ Teleport ย้ายไปที่ body เพื่อไม่ให้ติด perspective ของ #app -->
+        <Teleport to="body">
+            <div v-if="successAnimation.show" class="success-overlay print:hidden" @click="successAnimation.show = false">
+                <div class="success-stage">
+                    <!-- 3 วงคลื่นขยายออกแบบต่อเนื่อง -->
+                    <div class="success-ring"></div>
+                    <div class="success-ring"></div>
+                    <div class="success-ring"></div>
+
+                    <!-- วงกลมเขียวพร้อมเช็คมาร์ก -->
+                    <div class="success-circle">
+                        <svg class="success-check" viewBox="0 0 60 60">
+                            <path d="M14 31 L26 43 L46 19" />
+                        </svg>
+                    </div>
+
+                    <!-- Confetti 24 ชิ้น (ตำแหน่งคำนวณจาก Vue) -->
+                    <span v-for="(c, i) in successAnimation.confetti" :key="i"
+                          class="confetti"
+                          :style="{
+                              background: c.color,
+                              '--cx': c.cx + 'px',
+                              '--cy': c.cy + 'px',
+                              '--cr': c.rot + 'deg',
+                              width: c.size + 'px',
+                              height: c.size + 'px',
+                              borderRadius: c.round ? '50%' : '2px',
+                              animationDelay: c.delay + 'ms'
+                          }"></span>
+
+                    <!-- ข้อความ -->
+                    <div class="success-text">
+                        <span class="big">{{ successAnimation.title }}</span>
+                        <span class="sub">{{ successAnimation.subtitle }}</span>
+                    </div>
+                </div>
+            </div>
+        </Teleport>
+
         <!-- Toast Notification (ซ่อนตอนพิมพ์) -->
         <div v-if="showToast" class="fixed bottom-5 left-5 right-5 sm:left-auto sm:right-5 bg-green-600 dark:bg-green-700 text-white px-6 py-3 rounded-lg shadow-lg flex items-center gap-3 transition-opacity duration-300 z-50 max-w-sm mx-auto sm:mx-0 print:hidden">
             <i class="fas fa-check-circle text-xl"></i>
@@ -979,10 +1180,17 @@
                     
                     showToast: false, toastTitle: '', toastMessage: '',
                     
-                    modal: { 
-                        show: false, title: '', message: '', type: 'danger', 
+                    modal: {
+                        show: false, title: '', message: '', type: 'danger',
                         actionPayload: null, actionType: '', isLoading: false,
                         showInput: false, inputValue: '', inputType: 'text', inputPlaceholder: '', inputError: ''
+                    },
+
+                    successAnimation: {
+                        show: false,
+                        title: 'บันทึกสำเร็จ!',
+                        subtitle: '',
+                        confetti: []
                     }
                 }
             },
@@ -1054,6 +1262,10 @@
                     try {
                         const res = await callApi('saveAttendanceRecords', { records: records });
                         if(res && res.success) {
+                            this.playSuccessAnimation(
+                                'บันทึกสำเร็จ!',
+                                `${records.length} รายการ • ${this.formatDateThai(this.selectedDate)}`
+                            );
                             this.triggerToast('บันทึกสำเร็จ', 'บันทึกข้อมูลการเข้าเรียนเรียบร้อย');
                         } else {
                             let errorMsg = res && res.error ? (typeof res.error === 'object' ? JSON.stringify(res.error) : res.error) : "ไม่ทราบสาเหตุ";
@@ -1482,6 +1694,70 @@
                 triggerToast(title, message) {
                     this.toastTitle = title; this.toastMessage = message; this.showToast = true;
                     setTimeout(() => this.showToast = false, 4000);
+                },
+
+                playSuccessAnimation(title = 'บันทึกสำเร็จ!', subtitle = '') {
+                    // สร้าง confetti 24 ชิ้นกระจายเป็นวงรอบ
+                    const colors = [
+                        '#10b981', '#34d399', '#6ee7b7',   // เขียว
+                        '#fbbf24', '#f59e0b',              // ส้ม/เหลือง
+                        '#3b82f6', '#60a5fa',              // ฟ้า
+                        '#ec4899', '#f472b6',              // ชมพู
+                        '#a78bfa', '#c4b5fd'               // ม่วง
+                    ];
+                    const confetti = [];
+                    for (let i = 0; i < 24; i++) {
+                        const angle = (Math.PI * 2 * i) / 24 + (Math.random() - 0.5) * 0.3;
+                        const dist  = 140 + Math.random() * 120;
+                        confetti.push({
+                            cx:    Math.cos(angle) * dist,
+                            cy:    Math.sin(angle) * dist,
+                            rot:   (Math.random() - 0.5) * 1440,
+                            color: colors[Math.floor(Math.random() * colors.length)],
+                            size:  8 + Math.random() * 8,
+                            round: Math.random() > 0.5,
+                            delay: Math.random() * 200
+                        });
+                    }
+
+                    this.successAnimation = { show: true, title, subtitle, confetti };
+                    document.body.classList.add('success-locked');
+
+                    // เล่นเสียงประกอบ (สั้นๆ ไม่ต้องโหลดไฟล์)
+                    try {
+                        const AC = window.AudioContext || window.webkitAudioContext;
+                        if (AC) {
+                            const ctx = new AC();
+                            const playTone = (freq, start, dur) => {
+                                const osc = ctx.createOscillator();
+                                const gain = ctx.createGain();
+                                osc.frequency.value = freq;
+                                osc.type = 'sine';
+                                gain.gain.setValueAtTime(0, ctx.currentTime + start);
+                                gain.gain.linearRampToValueAtTime(0.15, ctx.currentTime + start + 0.02);
+                                gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + start + dur);
+                                osc.connect(gain).connect(ctx.destination);
+                                osc.start(ctx.currentTime + start);
+                                osc.stop(ctx.currentTime + start + dur);
+                            };
+                            playTone(523.25, 0,    0.15);  // C5
+                            playTone(659.25, 0.1,  0.15);  // E5
+                            playTone(783.99, 0.2,  0.25);  // G5
+                            setTimeout(() => ctx.close(), 800);
+                        }
+                    } catch (e) { /* เงียบไว้ */ }
+
+                    // Haptic feedback บนมือถือ
+                    if (navigator.vibrate) {
+                        navigator.vibrate([40, 60, 80]);
+                    }
+
+                    // ปิด overlay หลัง 2.2s
+                    clearTimeout(this._successTimer);
+                    this._successTimer = setTimeout(() => {
+                        this.successAnimation.show = false;
+                        document.body.classList.remove('success-locked');
+                    }, 2200);
                 }
             },
             mounted() {
